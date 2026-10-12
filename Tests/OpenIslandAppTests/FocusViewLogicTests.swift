@@ -156,21 +156,11 @@ struct FocusViewLogicTests {
 
     @Test
     func stalledAgeLabelUsesMinutesThenHours() {
-        #expect(StalledCard.ageLabel(seconds: 25 * 60) == "25 м")
-        #expect(StalledCard.ageLabel(seconds: 59 * 60 + 59) == "59 м")
-        #expect(StalledCard.ageLabel(seconds: 3600) == "1 ч")
-        #expect(StalledCard.ageLabel(seconds: 2 * 3600 + 1800) == "2 ч")
-        #expect(StalledCard.ageLabel(seconds: -5) == "0 м")
-    }
-
-    @Test
-    func stalledButtonTitles() {
-        #expect(StalledCard.primaryTitle(group: .waiting) == "Перейти")
-        #expect(StalledCard.primaryTitle(group: .review) == "Посмотреть")
-        #expect(StalledCard.primaryTitle(group: .unbound) == "Привязать")
-        #expect(StalledCard.title(count: 3) == "3 сессии ждут и про них легко забыть")
-        #expect(StalledCard.title(count: 1) == "1 сессия ждёт и про неё легко забыть")
-        #expect(StalledCard.title(count: 5) == "5 сессий ждут и про них легко забыть")
+        #expect(WaitingOutsideSection.ageLabel(seconds: 25 * 60) == "25 м")
+        #expect(WaitingOutsideSection.ageLabel(seconds: 59 * 60 + 59) == "59 м")
+        #expect(WaitingOutsideSection.ageLabel(seconds: 3600) == "1 ч")
+        #expect(WaitingOutsideSection.ageLabel(seconds: 2 * 3600 + 1800) == "2 ч")
+        #expect(WaitingOutsideSection.ageLabel(seconds: -5) == "0 м")
     }
 
     @Test
@@ -257,15 +247,6 @@ struct FocusViewLogicTests {
     }
 
     @Test
-    func stalledTitlePluralBoundaries() {
-        #expect(StalledCard.title(count: 11) == "11 сессий ждут и про них легко забыть")
-        #expect(StalledCard.title(count: 12) == "12 сессий ждут и про них легко забыть")
-        #expect(StalledCard.title(count: 14) == "14 сессий ждут и про них легко забыть")
-        #expect(StalledCard.title(count: 21) == "21 сессия ждёт и про неё легко забыть")
-        #expect(StalledCard.title(count: 22) == "22 сессии ждут и про них легко забыть")
-    }
-
-    @Test
     func bindingShortPathReplacesHome() {
         let home = NSHomeDirectory()
         #expect(BindingCard.shortPath(home) == "~")
@@ -284,7 +265,6 @@ struct FocusViewLogicTests {
     func bindingShownBelowNonModalCardsOnly() {
         #expect(FocusIslandSection.showsBinding(card: nil))
         #expect(FocusIslandSection.showsBinding(card: .dayStart))
-        #expect(FocusIslandSection.showsBinding(card: .stalled(sessionIDs: ["a"])))
         #expect(FocusIslandSection.showsBinding(card: .returned(sessionID: "a")))
         #expect(!FocusIslandSection.showsBinding(card: .onboarding))
         #expect(!FocusIslandSection.showsBinding(card: .nudge))
@@ -357,7 +337,7 @@ struct FocusViewLogicTests {
 
     @Test
     func hubFocusTitleFallsBack() {
-        #expect(SessionHubView.focusTitle(nil) == "Задача не выбрана")
+        #expect(SessionHubView.focusTitle(nil) == "Не выбрана")
         #expect(SessionHubView.focusTitle("Рефакторинг auth") == "Рефакторинг auth")
     }
 
@@ -876,5 +856,323 @@ struct FocusViewLogicTests {
         #expect(FocusSettingsPane.hooksPathText(path: "/Users/meow/x.json", home: "/Users/me") == "/Users/meow/x.json")
         #expect(FocusSettingsPane.hooksActionTitle(installed: true) == "Удалить хуки")
         #expect(FocusSettingsPane.hooksActionTitle(installed: false) == "Установить хуки")
+    }
+
+    @Test
+    func pomodoroTimerTextIsZeroPaddedMinutesAndSeconds() {
+        #expect(PomodoroFormat.timerText(remainingSeconds: 1445) == "24:05")
+        #expect(PomodoroFormat.timerText(remainingSeconds: 59) == "00:59")
+        #expect(PomodoroFormat.timerText(remainingSeconds: -3) == "00:00")
+        #expect(PomodoroFormat.timerText(remainingSeconds: 6000) == "100:00")
+    }
+
+    @Test
+    func pomodoroCaptions() {
+        #expect(PomodoroFormat.remainingCaption(plannedSeconds: 1500) == "осталось из 25 мин")
+        #expect(PomodoroFormat.cycleCaption(index: 2, cycle: 4) == "Помодоро 2 из 4")
+        #expect(PomodoroFormat.todayCaption(seconds: 12 * 60) == "сегодня по задаче 12 мин")
+        #expect(PomodoroFormat.todayCaption(seconds: 0) == nil)
+        #expect(PomodoroFormat.breakCaption(minutes: 5) == "потом перерыв 5 мин")
+        #expect(PomodoroFormat.startButtonTitle(minutes: 25) == "Начать · 25 мин")
+        #expect(PomodoroFormat.startButtonTitle(minutes: nil) == "Начать")
+        #expect(PomodoroFormat.quickStartTitle(minutes: 50) == "Начать 50 мин")
+        #expect(PomodoroFormat.pauseTitle(isPaused: false) == "Пауза")
+        #expect(PomodoroFormat.pauseTitle(isPaused: true) == "Продолжить")
+    }
+
+    @Test
+    func sessionSubtitleNamesBoundTask() {
+        let bound = BindableSession(id: "a", title: "t", detail: "d", projectName: nil, boundTaskTitle: "Фикс", isSameProject: true, defaultSelected: false)
+        let free = BindableSession(id: "b", title: "t", detail: "d", projectName: nil, boundTaskTitle: nil, isSameProject: true, defaultSelected: true)
+        #expect(PomodoroFormat.sessionTag(bound) == "у задачи «Фикс»")
+        #expect(PomodoroFormat.sessionTag(free) == nil)
+        #expect(StartTaskSheet.initialSelection([bound, free]) == ["b"])
+    }
+
+    @Test
+    func timerChoiceMapsToMinutes() {
+        #expect(StartTimerChoice.initial(defaultMinutes: 25) == .m25)
+        #expect(StartTimerChoice.initial(defaultMinutes: 50) == .m50)
+        #expect(StartTimerChoice.initial(defaultMinutes: 40) == .custom)
+        #expect(StartTimerChoice.none.minutes(custom: 40) == nil)
+        #expect(StartTimerChoice.m25.minutes(custom: 40) == 25)
+        #expect(StartTimerChoice.m50.minutes(custom: 40) == 50)
+        #expect(StartTimerChoice.custom.minutes(custom: 40) == 40)
+        #expect(StartTimerChoice.custom.minutes(custom: 2) == 5)
+        #expect(StartTimerChoice.custom.minutes(custom: 500) == 120)
+        #expect(StartTimerChoice.custom.title == "Своё…")
+        #expect(StartTimerChoice.allCases.map(\.title) == ["Без таймера", "25 мин", "50 мин", "90 мин", "Своё…"])
+    }
+
+    @Test
+    func movingIntoInProgressRequestsStartOnlyFromOtherColumns() {
+        #expect(PomodoroFormat.shouldRequestStart(from: .todo, to: .inProgress))
+        #expect(PomodoroFormat.shouldRequestStart(from: .backlog, to: .inProgress))
+        #expect(PomodoroFormat.shouldRequestStart(from: .done, to: .inProgress))
+        #expect(!PomodoroFormat.shouldRequestStart(from: .inProgress, to: .inProgress))
+        #expect(!PomodoroFormat.shouldRequestStart(from: .inProgress, to: .done))
+        #expect(!PomodoroFormat.shouldRequestStart(from: nil, to: .inProgress))
+    }
+
+    @Test
+    func todaySecondsClipsSpansToStartOfDay() {
+        let calendar = Calendar(identifier: .gregorian)
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        let start = calendar.startOfDay(for: now)
+        let spans = [
+            ActivitySpan(kind: .you, sessionId: nil, taskId: "t", startedAt: start.addingTimeInterval(-600), endedAt: start.addingTimeInterval(300)),
+            ActivitySpan(kind: .claude, sessionId: nil, taskId: "t", startedAt: start.addingTimeInterval(200), endedAt: start.addingTimeInterval(500)),
+            ActivitySpan(kind: .you, sessionId: nil, taskId: "t", startedAt: start.addingTimeInterval(-900), endedAt: start.addingTimeInterval(-700))
+        ]
+        #expect(TaskDetailView.todaySeconds(spans: spans, now: now, calendar: calendar) == 500)
+    }
+
+    @Test
+    func quickStartOnlyForInProgressTasks() {
+        #expect(TaskPomodoroSection.showsQuickStart(column: .inProgress))
+        #expect(!TaskPomodoroSection.showsQuickStart(column: .todo))
+        #expect(!TaskPomodoroSection.showsQuickStart(column: .done))
+        #expect(!TaskPomodoroSection.showsQuickStart(column: nil))
+    }
+
+    @Test
+    func resumableIDsKeepLiveAndExistingPaths() {
+        let records = [
+            SessionRecord(id: "live", cwd: nil, projectName: nil, title: "live", firstPrompt: nil, lastPrompt: nil, lastAssistantMessage: nil, startedAt: .distantPast, lastActivityAt: .distantPast, endedAt: nil, status: .ended, taskId: nil, transcriptPath: nil),
+            SessionRecord(id: "gone", cwd: "/definitely/missing/path", projectName: nil, title: "gone", firstPrompt: nil, lastPrompt: nil, lastAssistantMessage: nil, startedAt: .distantPast, lastActivityAt: .distantPast, endedAt: nil, status: .ended, taskId: nil, transcriptPath: nil),
+            SessionRecord(id: "here", cwd: NSTemporaryDirectory(), projectName: nil, title: "here", firstPrompt: nil, lastPrompt: nil, lastAssistantMessage: nil, startedAt: .distantPast, lastActivityAt: .distantPast, endedAt: nil, status: .ended, taskId: nil, transcriptPath: nil),
+            SessionRecord(id: "none", cwd: nil, projectName: nil, title: "none", firstPrompt: nil, lastPrompt: nil, lastAssistantMessage: nil, startedAt: .distantPast, lastActivityAt: .distantPast, endedAt: nil, status: .ended, taskId: nil, transcriptPath: nil)
+        ]
+        #expect(TaskDetailView.resumableIDs(records: records, live: ["live"]) == ["live", "here"])
+    }
+
+    @Test
+    func replaceCaptionOnlyForOtherTasksPomodoro() {
+        let running = PomodoroSnapshot(id: "p", taskID: "a", taskTitle: "A", phase: .focus, plannedSeconds: 1500, remainingSeconds: 900, progress: 0.4, isPaused: false, cycleIndex: 1, cycle: 4)
+        let loose = PomodoroSnapshot(id: "q", taskID: nil, taskTitle: nil, phase: .break, plannedSeconds: 300, remainingSeconds: 100, progress: 0.6, isPaused: false, cycleIndex: 1, cycle: 4)
+        #expect(PomodoroFormat.replaceCaption(pomodoro: running, startingTaskID: "b") == "Сейчас идёт помодоро «A»")
+        #expect(PomodoroFormat.replaceCaption(pomodoro: running, startingTaskID: "a") == nil)
+        #expect(PomodoroFormat.replaceCaption(pomodoro: nil, startingTaskID: "b") == nil)
+        #expect(PomodoroFormat.replaceCaption(pomodoro: loose, startingTaskID: "b") == "Сейчас идёт помодоро")
+        #expect(PomodoroFormat.replaceButtonTitle == "Заменить")
+    }
+
+    @Test
+    func activeElsewhereCaptionNamesTask() {
+        #expect(PomodoroFormat.activeElsewhereCaption(taskTitle: "Фикс") == "Сейчас идёт помодоро «Фикс»")
+        #expect(PomodoroFormat.activeElsewhereCaption(taskTitle: nil) == "Сейчас идёт помодоро")
+    }
+    @Test
+    func pickTaskTodoCaption() {
+        #expect(PickTaskCard.todoCaption(3) == "Todo · 3")
+    }
+
+    @Test
+    func pickTaskPrimaryIsFirstWithSessions() {
+        let options = [
+            PickTaskOption(taskID: "a", title: "A", projectName: "p", liveSessionCount: 1, sessionStateText: ""),
+            PickTaskOption(taskID: "b", title: "B", projectName: nil, liveSessionCount: 0, sessionStateText: "")
+        ]
+        #expect(PickTaskCard.primaryOptionID(options) == "a")
+        #expect(PickTaskCard.primaryOptionID(Array(options.dropFirst())) == nil)
+        #expect(PickTaskCard.primaryOptionID([]) == nil)
+    }
+
+    @Test
+    func pomodoroEndHeadlineAndTitle() {
+        #expect(PomodoroEndCard.headline(cycleIndex: 1, cycle: 4) == "Фокус 1 из 4 готов")
+        #expect(PomodoroEndCard.title(minutes: 25, taskTitle: "Чат-бот") == "25 минут в «Чат-бот»")
+        #expect(PomodoroEndCard.title(minutes: 21, taskTitle: "X") == "21 минута в «X»")
+        #expect(PomodoroEndCard.title(minutes: 22, taskTitle: "X") == "22 минуты в «X»")
+        #expect(PomodoroEndCard.title(minutes: 25, taskTitle: "") == "25 минут фокуса")
+    }
+
+    @Test
+    func pomodoroEndKpiValuesAndDistractionDetail() {
+        #expect(PomodoroEndCard.minutesValue(1260) == "21 мин")
+        #expect(PomodoroEndCard.minutesValue(0) == "0 мин")
+        #expect(PomodoroEndCard.distractionDetail(count: 1, returned: 1) == "1 раз, вернулся")
+        #expect(PomodoroEndCard.distractionDetail(count: 2, returned: 0) == "2 раза")
+        #expect(PomodoroEndCard.distractionDetail(count: 3, returned: 1) == "3 раза, вернулся 1")
+        #expect(PomodoroEndCard.distractionDetail(count: 0, returned: 0) == nil)
+    }
+
+    @Test
+    func pomodoroEndWhileRunningItems() {
+        let items = PomodoroEndCard.whileRunningItems(finishedSessionTitles: ["добавь проверку"], checkedCriteria: ["Бот отвечает"])
+        #expect(items == [
+            PomodoroEndCard.Item(text: "«добавь проверку» — Claude закончил", isCriterion: false),
+            PomodoroEndCard.Item(text: "Критерий «Бот отвечает» отмечен", isCriterion: true)
+        ])
+        #expect(PomodoroEndCard.whileRunningItems(finishedSessionTitles: [], checkedCriteria: []).isEmpty)
+    }
+
+    @Test
+    func pomodoroEndButtonTitles() {
+        #expect(PomodoroEndCard.continueTitle(minutes: 50) == "Без перерыва — ещё 50 мин")
+        #expect(PomodoroEndCard.breakTitle(minutes: 10) == "☕ Начать перерыв · 10 мин")
+        #expect(PomodoroEndCard.breakHeadline(minutes: 10, secondsLeft: 4) == "Перерыв 10 мин начнётся через 4 с")
+        #expect(PomodoroEndCard.breakHeadline(minutes: 10, secondsLeft: nil) == "Перерыв 10 мин")
+        #expect(PomodoroEndCard.afterBreakCaption(focusMinutes: 50) == "потом фокус 50 мин")
+        #expect(PomodoroEndCard.countdownProgress(secondsLeft: 5) == 1)
+        #expect(PomodoroEndCard.countdownProgress(secondsLeft: 0) == 0)
+        #expect(PomodoroEndCard.prefill(note: "  Шаг  ") == "Шаг")
+        #expect(PomodoroEndCard.prefill(note: nil) == "")
+    }
+
+    @Test
+    func breakEndTexts() {
+        #expect(BreakEndCard.title(taskTitle: "Чат-бот") == "Вернуться к «Чат-бот»")
+        #expect(BreakEndCard.title(taskTitle: "") == "Вернуться к задаче")
+        #expect(BreakEndCard.restedLine(finishedSessionTitles: []) == nil)
+        #expect(BreakEndCard.restedLine(finishedSessionTitles: ["a", "b"]) == "Пока отдыхал: Claude закончил «a», «b»")
+        #expect(BreakEndCard.extendTitle(minutes: 5) == "Ещё 5 мин отдыха")
+        #expect(BreakEndCard.noteText(" ") == nil)
+        #expect(BreakEndCard.noteText(" Шаг ") == "Шаг")
+    }
+
+    @Test
+    func hubTimerCaptionAndFooterWithPomodoros() {
+        let focusSnap = PomodoroSnapshot(id: "p", taskID: "t", taskTitle: "T", phase: .focus, plannedSeconds: 1500, remainingSeconds: 1122, progress: 0.25, isPaused: false, cycleIndex: 1, cycle: 4)
+        let breakSnap = PomodoroSnapshot(id: "b", taskID: "t", taskTitle: "T", phase: .break, plannedSeconds: 300, remainingSeconds: 192, progress: 0.36, isPaused: false, cycleIndex: 1, cycle: 4)
+        #expect(SessionHubView.timerCaption(focusSnap, breakMinutes: 10, focusMinutes: 50) == "Фокус 1 из 4 · из 25 мин · потом перерыв 10 мин")
+        #expect(SessionHubView.timerCaption(breakSnap, breakMinutes: 10, focusMinutes: 50) == "Перерыв · из 5 мин · потом фокус 50 мин")
+    }
+
+    @Test
+    func newSessionHintDetailShowsProjectAndFirstPromptLine() {
+        #expect(SessionHubView.newSessionDetail(cwd: "/Users/me/focus", prompt: "хочу приложение\nи ещё") == "· focus · «хочу приложение»")
+        #expect(SessionHubView.newSessionDetail(cwd: nil, prompt: "  ") == "")
+        #expect(SessionHubView.newSessionDetail(cwd: "/tmp/p", prompt: String(repeating: "а", count: 70)) == "· p · «" + String(repeating: "а", count: 60) + "…»")
+        #expect(SessionHubView.footerText(focusSeconds: 1860, distractionSeconds: 0, pomodoroCount: 1) == "Сегодня: фокус 31 мин · помодоро 1 · отвлечения 0 мин")
+        #expect(SessionHubView.footerText(focusSeconds: 1860, distractionSeconds: 0, pomodoroCount: 0) == "Сегодня: фокус 31 мин · отвлечения 0 мин")
+    }
+
+    @Test
+    func daySummaryMarkdownListsPomodorosWhenAny() {
+        let calendar = daySummaryCalendar()
+        let day = calendar.date(from: DateComponents(year: 2026, month: 10, day: 9, hour: 12))!
+        let with = DaySummaryFormatter.markdown(report: summaryReport(), done: [], open: [], tomorrow: nil, day: day, pomodoroCount: 3, calendar: calendar)
+        #expect(with.contains("- Отвлечения: 11 м (4 раза, вернулся 3)\n- Помодоро: 3\n- Макс. параллельно: 4"))
+        let without = DaySummaryFormatter.markdown(report: summaryReport(), done: [], open: [], tomorrow: nil, day: day, pomodoroCount: 0, calendar: calendar)
+        #expect(!without.contains("Помодоро"))
+    }
+
+    @Test
+    func pomodoroEndDraftSavedOnlyWhenChanged() {
+        #expect(PomodoroEndCard.draftToSave(text: "  новый шаг ", saved: "старый") == "новый шаг")
+        #expect(PomodoroEndCard.draftToSave(text: "старый ", saved: "старый") == nil)
+        #expect(PomodoroEndCard.draftToSave(text: "   ", saved: "старый") == nil)
+        #expect(PomodoroEndCard.draftToSave(text: "шаг", saved: "") == "шаг")
+    }
+
+    @Test
+    func pickTaskTodoSummaryCollapsesTail() {
+        #expect(PickTaskCard.todoSummary(titles: []) == "")
+        #expect(PickTaskCard.todoSummary(titles: ["A"]) == "A")
+        #expect(PickTaskCard.todoSummary(titles: ["A", "B"]) == "A · B")
+        #expect(PickTaskCard.todoSummary(titles: ["A", "B", "C"]) == "A · B · ещё 1")
+        #expect(PickTaskCard.todoSummary(titles: ["A", "B", "C", "D", "E"]) == "A · B · ещё 3")
+    }
+
+    @Test
+    func pickTaskCaptionsAndExpansion() {
+        #expect(PickTaskCard.inProgressCaption(2) == "В работе · 2")
+        #expect(PickTaskCard.showsTodoList(inProgressIsEmpty: true, userExpanded: false))
+        #expect(!PickTaskCard.showsTodoList(inProgressIsEmpty: false, userExpanded: false))
+        #expect(PickTaskCard.showsTodoList(inProgressIsEmpty: false, userExpanded: true))
+        #expect(PickTaskCard.showsEmptyCaption(inProgressIsEmpty: true, todoIsEmpty: false))
+        #expect(!PickTaskCard.showsEmptyCaption(inProgressIsEmpty: true, todoIsEmpty: true))
+        #expect(!PickTaskCard.showsEmptyCaption(inProgressIsEmpty: false, todoIsEmpty: false))
+    }
+
+    @Test
+    func pickTaskStateColorWarnsOnlyWithoutSessions() {
+        let none = PickTaskOption(taskID: "a", title: "A", projectName: nil, liveSessionCount: 0, sessionStateText: "нет сессий — добавишь следующим шагом")
+        let some = PickTaskOption(taskID: "b", title: "B", projectName: nil, liveSessionCount: 2, sessionStateText: "2 сессии · ждёт 3 мин")
+        #expect(PickTaskCard.stateIsWarning(none))
+        #expect(!PickTaskCard.stateIsWarning(some))
+    }
+
+    @Test
+    func taskSessionsPickerSectionsAndTitles() {
+        func choice(_ id: String, bound: Bool = false, same: Bool = true, other: String? = nil) -> BindableSession {
+            BindableSession(id: id, title: id, detail: "", projectName: nil, boundTaskTitle: other, isSameProject: same, defaultSelected: bound || (same && other == nil), isBound: bound)
+        }
+        let choices = [choice("b", bound: true), choice("s"), choice("t", other: "Фикс"), choice("o", same: false)]
+        let sections = TaskSessionsPicker.sections(choices, projectName: "wb")
+        #expect(sections.map(\.title) == ["Привязаны · 1", "Открытые · проект wb", "Открытые · другие проекты"])
+        #expect(sections.map { $0.rows.map(\.id) } == [["b"], ["s", "t"], ["o"]])
+        #expect(TaskSessionsPicker.sections([choice("o", same: false)], projectName: nil).map(\.title) == ["Открытые"])
+        #expect(TaskSessionsPicker.applyTitle((add: ["s"], remove: [])) == "Добавить 1")
+        #expect(TaskSessionsPicker.applyTitle((add: [], remove: [])) == "Добавить 0")
+        #expect(TaskSessionsPicker.applyTitle((add: ["s"], remove: ["b"])) == "Сохранить")
+        #expect(TaskSessionsPicker.cancelTitle(hasBound: false) == "Позже")
+        #expect(TaskSessionsPicker.cancelTitle(hasBound: true) == "Отмена")
+        #expect(TaskSessionsPicker.trailingLabel(choices[0]) == nil)
+        #expect(TaskSessionsPicker.trailingLabel(choices[1]) == "без задачи")
+        #expect(TaskSessionsPicker.trailingLabel(choices[2]) == "у задачи «Фикс»")
+        #expect(TaskSessionsPicker.footerHint((add: ["t"], remove: []), choices: choices) == "Сессия переедет из «Фикс» в эту задачу")
+        #expect(TaskSessionsPicker.footerHint((add: [], remove: ["b"]), choices: choices) == "Снятые сессии отвяжутся от задачи")
+        #expect(TaskSessionsPicker.footerHint((add: ["s"], remove: []), choices: choices) == "Сессию чужой задачи не трогаем, пока сам не отметишь")
+    }
+
+    @Test
+    func closeTaskTexts() {
+        #expect(ClosedTaskBanner.text("A") == "«A» закрыта · перенесена в Done")
+        #expect(TaskDetailView.showsCloseTask(column: .inProgress))
+        #expect(TaskDetailView.showsCloseTask(column: .todo))
+        #expect(!TaskDetailView.showsCloseTask(column: .done))
+        #expect(!TaskDetailView.showsCloseTask(column: nil))
+    }
+
+    @Test
+    func hubFocusBlockTexts() {
+        #expect(SessionHubView.focusBlockCaption(3) == "Сессии задачи · 3")
+        #expect(PomodoroFormat.startFocusTitle(minutes: 50) == "▶ Начать фокус · 50 мин")
+        #expect(SessionHubView.hereDetail("ждёт ответа", isHere: true) == "ты здесь · ждёт ответа")
+        #expect(SessionHubView.hereDetail("ждёт ответа", isHere: false) == "ждёт ответа")
+        #expect(SessionHubView.hereDetail("", isHere: true) == "ты здесь")
+    }
+
+    @Test
+    func timerLengthChoices() {
+        #expect(PomodoroFormat.focusChoices == [25, 50, 90])
+        #expect(PomodoroFormat.breakChoices == [5, 10, 15, 20])
+        #expect(PomodoroFormat.choiceTitle(50, defaultMinutes: 50) == "50 мин · по умолчанию")
+        #expect(PomodoroFormat.choiceTitle(25, defaultMinutes: 50) == "25 мин")
+        #expect(PomodoroFormat.breakButtonTitle(minutes: 10) == "Перерыв 10 мин")
+        #expect(PomodoroFormat.clampFocus(500) == 120)
+        #expect(PomodoroFormat.clampFocus(2) == 5)
+        #expect(StartTimerChoice.allCases.map(\.title) == ["Без таймера", "25 мин", "50 мин", "90 мин", "Своё…"])
+        #expect(StartTimerChoice.initial(defaultMinutes: 50) == .m50)
+        #expect(StartTimerChoice.initial(defaultMinutes: 90) == .m90)
+        #expect(StartTimerChoice.m90.minutes(custom: 0) == 90)
+    }
+
+    @Test
+    func waitingOutsideTexts() {
+        #expect(WaitingOutsideSection.caption(2) == "Ждут вне задачи · 2")
+        #expect(WaitingOutsideSection.buttonTitle(2, expanded: false) == "Ждут вне задачи · 2 ▸")
+        #expect(WaitingOutsideSection.buttonTitle(2, expanded: true) == "Ждут вне задачи · 2 ▾")
+        #expect(WaitingOutsideSection.explainer(taskTitle: "Воронка") == "Claude в этих сессиях закончил и ждёт тебя. Они не относятся к «Воронка».")
+        #expect(WaitingOutsideSection.ownerText(taskTitle: nil) == "без задачи")
+        #expect(WaitingOutsideSection.ownerText(taskTitle: "Онбординг") == "у задачи «Онбординг»")
+        #expect(WaitingOutsideSection.addTitle(taskTitle: "Воронка") == "Добавить в «Воронка»")
+    }
+
+    @Test
+    func withoutTaskHubShowsOnlyTaskChoice() {
+        #expect(SessionHubView.showsOnlyTaskChoice(hasTask: false, pomodoroActive: false))
+        #expect(!SessionHubView.showsOnlyTaskChoice(hasTask: true, pomodoroActive: false))
+        #expect(!SessionHubView.showsOnlyTaskChoice(hasTask: false, pomodoroActive: true))
+    }
+
+    @Test
+    func returnedCardIsLeftToTheCompletionCard() {
+        #expect(!FocusIslandSection.showsCardView(nil))
+        #expect(!FocusIslandSection.showsCardView(.returned(sessionID: "s")))
+        #expect(FocusIslandSection.showsCardView(.pomodoroEnd(pomodoroID: "p")))
+        #expect(FocusIslandSection.showsCardView(.dayStart))
     }
 }

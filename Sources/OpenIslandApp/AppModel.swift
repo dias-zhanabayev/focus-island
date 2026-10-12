@@ -395,6 +395,9 @@ final class AppModel {
 
     @ObservationIgnored
     private var jumpTask: Task<Void, Never>?
+    private(set) var turnSummaries: [String: TurnSummary] = [:]
+    static let turnSummaryPollDelays: [Double] = [0, 2, 3, 5, 10]
+    static let turnSummaryTolerance: TimeInterval = 30
 
     @ObservationIgnored
     private var notificationPresentationTask: Task<Void, Never>?
@@ -538,8 +541,18 @@ final class AppModel {
         monitoring.onPersistenceNeeded = { [weak self] in
             self?.discovery.scheduleClaudeSessionPersistence()
         }
+        focus.playSound = { name in
+            NSSound(named: NSSound.Name(name))?.play()
+        }
         focus.presentCard = { [weak self] in
             self?.notchOpen(reason: .notification, surface: .sessionList())
+        }
+        focus.lookupSessionLabels = { ids in
+            await Task.detached(priority: .utility) {
+                ClaudeDesktopSessionLocator().sessions(forCLISessionIDs: ids).mapValues {
+                    SessionLabel(title: $0.title, status: $0.turnSummary?.text)
+                }
+            }.value
         }
         focus.jumpToSession = { [weak self] sessionID in
             guard let self, let session = self.state.session(id: sessionID) else { return }
@@ -736,7 +749,36 @@ final class AppModel {
     }
 
     func islandClosedLeftSlotContent() -> IslandLeftSlotContent? {
-        FocusEars.leftSlot(preference: islandRightSlot, rows: focus.hubRows)
+        FocusEars.leftSlot(preference: islandRightSlot, rows: focus.hubRows, pomodoro: focus.pomodoro, waitingOutside: focus.waitingOutside.count)
+    }
+
+    func openIslandFromClosedPillClick(onLeftSide: Bool = false) {
+        if onLeftSide, FocusEars.clickShowsWaitingOutside(leftSlot: islandClosedLeftSlotContent()) {
+            focus.showWaitingOutside()
+            notchOpen(reason: .click)
+            return
+        }
+        if let minutes = FocusEars.clickStartsFocus(rightSlot: islandClosedRightSlotContent()) {
+            if case .breakEnd = focus.card {
+                focus.resumeAfterBreak(minutes: minutes)
+                return
+            }
+            if islandRightSlot == .currentTask, let taskID = focus.currentTask?.id {
+                focus.startPomodoro(taskID: taskID, minutes: minutes)
+                return
+            }
+        }
+        if islandRightSlot == .currentTask,
+           focus.currentTask == nil, !focus.pendingBindingSessionIDs.isEmpty {
+            notchOpen(reason: .click)
+            return
+        }
+        if islandRightSlot == .currentTask,
+           FocusEars.clickOpensPickTask(rightSlot: islandClosedRightSlotContent()),
+           !FocusEars.opensIsland(after: focus.openPickTask()) {
+            return
+        }
+        notchOpen(reason: .click)
     }
 
     /// Right-slot payload derived from the user's `islandRightSlot`
@@ -747,7 +789,11 @@ final class AppModel {
         if let alert = FocusEars.alertOverride(
             preference: islandRightSlot,
             toast: focus.toast,
-            stalled: focus.stalledBadge
+            stalled: focus.stalledBadge,
+            card: focus.card,
+            breakCountdown: focus.breakCountdownLeft,
+            breakMinutes: focus.breakMinutesChoice ?? focus.settings.pomodoroBreakMinutes,
+            focusMinutes: focus.settings.pomodoroFocusMinutes
         ) {
             return alert
         }
@@ -755,12 +801,16 @@ final class AppModel {
         case .none:
             return nil
         case .currentTask:
-            let task = focus.currentTask
-            return FocusEars.rightSlot(
-                toast: nil,
-                stalled: nil,
-                taskTitle: task?.title,
-                elapsedMinutes: focus.focusElapsedMinutes
+            return FocusEars.taskSlot(
+                taskTitle: focus.currentTask?.title,
+                elapsedMinutes: focus.focusElapsedMinutes,
+                todoCount: focus.board.tasks(in: .todo).count,
+                isOnBreak: focus.isOnBreak,
+                runningCount: focus.hubRows.filter { $0.group == .running }.count,
+                pomodoroActive: focus.pomodoro != nil,
+                inProgressCount: focus.board.tasks(in: .inProgress).count,
+                focusMinutes: focus.settings.pomodoroFocusMinutes,
+                newSessionPending: !focus.pendingBindingSessionIDs.isEmpty
             )
         case .count:
             let n = sessions.count
@@ -1198,7 +1248,49 @@ final class AppModel {
             lastActionMessage = "Cannot jump: terminal app is unknown."
             return
         }
+        if ClaudeDesktopSessionLocator.isClaudeDesktop(terminalApp: jumpTarget.terminalApp) {
+            jumpToClaudeDesktopSession(cliSessionID: session.id, fallback: jumpTarget)
+            return
+        }
         jump(to: jumpTarget)
+    }
+
+    func loadTurnSummary(for session: AgentSession) async {
+        guard session.phase == .completed, let target = session.jumpTarget,
+              ClaudeDesktopSessionLocator.isClaudeDesktop(terminalApp: target.terminalApp) else { return }
+        let id = session.id
+        let completedAt = session.updatedAt
+        turnSummaries[id] = nil
+        for delay in Self.turnSummaryPollDelays {
+            try? await Task.sleep(for: .seconds(delay))
+            if Task.isCancelled { return }
+            let found = await Task.detached(priority: .utility) {
+                ClaudeDesktopSessionLocator().sessions(forCLISessionIDs: [id])[id]
+            }.value
+            if Task.isCancelled { return }
+            if let found, let summary = found.turnSummary,
+               (found.lastActivityAt ?? .distantPast) >= completedAt.addingTimeInterval(-Self.turnSummaryTolerance) {
+                turnSummaries[id] = summary
+                return
+            }
+        }
+    }
+
+    private func jumpToClaudeDesktopSession(cliSessionID: String, fallback: JumpTarget) {
+        dismissOverlayForJump()
+        jumpTask?.cancel()
+        jumpTask = Task { [weak self] in
+            let desktopID = await Task.detached(priority: .userInitiated) {
+                ClaudeDesktopSessionLocator().desktopSessionID(forCLISessionID: cliSessionID)
+            }.value
+            guard !Task.isCancelled, let self else { return }
+            guard let desktopID, let url = ClaudeDesktopSessionLocator.continueURL(desktopSessionID: desktopID),
+                  NSWorkspace.shared.open(url) else {
+                self.jump(to: fallback)
+                return
+            }
+            self.lastActionMessage = "Opened the Claude Code session in Claude."
+        }
     }
 
     private func jump(to jumpTarget: JumpTarget?) {
@@ -1413,6 +1505,9 @@ final class AppModel {
               let session = state.session(id: sessionID) else {
             return
         }
+        if session.phase == .completed, !focus.opensIslandOnCompletion(sessionID: sessionID) {
+            return
+        }
 
         guard suppressFrontmostNotifications else {
             presentNotificationSurface(surface)
@@ -1518,6 +1613,7 @@ final class AppModel {
         monitoring.reconcileSessionAttachments()
         monitoring.startMonitoringIfNeeded()
         focus.start(initialSessions: state.sessions)
+        focus.offerTaskChoiceOnLaunch()
         focus.startTicking()
         focus.onSettingsChanged = { [weak self] settings in
             self?.boardHotKey?.update(settings.boardHotKey)
@@ -1526,12 +1622,14 @@ final class AppModel {
         frontmostMonitor?.start()
         boardHotKey = GlobalHotKey(hotKey: focus.settings.boardHotKey) { [weak self] in
             guard let self else { return }
+            self.notchClose()
             BoardWindowController.shared.show(focus: self.focus)
         }
         openBoardObserver = NotificationCenter.default.addObserver(forName: .focusOpenBoard, object: nil, queue: .main) { [weak self] notification in
             let tab = BoardTab.explicit(userInfo: notification.userInfo)
             MainActor.assumeIsolated {
                 guard let self else { return }
+                self.notchClose()
                 BoardWindowController.shared.show(focus: self.focus, tab: tab)
             }
         }

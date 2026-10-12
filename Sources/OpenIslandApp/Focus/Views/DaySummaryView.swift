@@ -69,18 +69,20 @@ enum DaySummaryFormatter {
         return "- \(text)"
     }
 
-    nonisolated static func markdown(report: DayReport, done: [FocusTask], open: [FocusTask], tomorrow: String?, day: Date, calendar: Calendar = .current) -> String {
+    nonisolated static func markdown(report: DayReport, done: [FocusTask], open: [FocusTask], tomorrow: String?, day: Date, pomodoroCount: Int = 0, calendar: Calendar = .current) -> String {
         var distraction = "- Отвлечения: \(duration(report.distractionSeconds))"
         if let detail = distractionDetail(count: report.distractionCount, returned: report.returnedCount) {
             distraction += " (\(detail))"
         }
-        let kpis = [
+        var lines = [
             "- Ты в работе: \(duration(report.youSeconds))",
             "- Claude работал: \(duration(report.claudeSeconds))",
             "- Сессии ждали тебя: \(duration(report.waitingSeconds))",
-            distraction,
-            "- Макс. параллельно: \(report.maxParallel)"
-        ].joined(separator: "\n")
+            distraction
+        ]
+        if pomodoroCount > 0 { lines.append("- Помодоро: \(pomodoroCount)") }
+        lines.append("- Макс. параллельно: \(report.maxParallel)")
+        let kpis = lines.joined(separator: "\n")
         var blocks = ["# \(title(day, calendar: calendar))", kpis]
         if !done.isEmpty {
             blocks.append((["## Сделано"] + done.map { listItem($0.title) }).joined(separator: "\n"))
@@ -103,6 +105,7 @@ extension FocusStyle {
 struct DaySummaryView: View {
     @Bindable var focus: FocusCoordinator
     @State private var report: DayReport?
+    @State private var pomodoroCount = 0
     @State private var doneTasks: [FocusTask] = []
     @State private var openTasks: [FocusTask] = []
     @State private var subtitles: [String: String] = [:]
@@ -139,6 +142,7 @@ struct DaySummaryView: View {
         }
         .onChange(of: focus.workRevision) { _, _ in reload() }
         .onChange(of: focus.board) { _, _ in reload() }
+        .onChange(of: focus.pomodoroCountToday) { _, _ in reload() }
         .onChange(of: noteFocused) { _, focused in
             if !focused { saveNote() }
         }
@@ -171,6 +175,7 @@ struct DaySummaryView: View {
                 color: FocusStyle.distractionText,
                 detail: value.flatMap { DaySummaryFormatter.distractionDetail(count: $0.distractionCount, returned: $0.returnedCount) }
             )
+            kpi("Помодоро", value == nil ? "—" : "\(pomodoroCount)")
             kpi("Макс. параллельно", value.map { "\($0.maxParallel)" } ?? "—", detail: "комфортно до \(focus.settings.maxParallelSessions)")
         }
     }
@@ -281,6 +286,7 @@ struct DaySummaryView: View {
             }
         }
         report = loaded
+        pomodoroCount = focus.pomodoroCount(day: now)
         doneTasks = DaySummaryFormatter.done(tasks: tasks, dayStart: range.start, dayEnd: range.end)
         openTasks = open
         subtitles = texts
@@ -306,7 +312,7 @@ struct DaySummaryView: View {
     private func copy() {
         reload()
         guard let report else { return }
-        let text = DaySummaryFormatter.markdown(report: report, done: doneTasks, open: openTasks, tomorrow: note, day: reportDay)
+        let text = DaySummaryFormatter.markdown(report: report, done: doneTasks, open: openTasks, tomorrow: note, day: reportDay, pomodoroCount: pomodoroCount)
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(text, forType: .string)
         copied = true

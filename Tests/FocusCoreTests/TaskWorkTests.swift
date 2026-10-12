@@ -1,4 +1,5 @@
 import Foundation
+import GRDB
 import Testing
 @testable import FocusCore
 
@@ -21,6 +22,34 @@ struct TaskWorkTests {
         try service.delete(id: b.id)
         #expect(try service.progress(taskID: "t1") == CriteriaProgress(done: 0, total: 1))
         #expect(try service.progress(taskID: "none") == CriteriaProgress(done: 0, total: 0))
+    }
+
+    @Test
+    func toggleRecordsAndClearsCheckedAt() throws {
+        let service = TaskCriteriaService(store: try FocusStore.inMemory())
+        let a = try service.add(taskID: "t1", text: "a", now: t0)
+        #expect(try service.criteria(taskID: "t1").first?.checkedAt == nil)
+        try service.toggle(id: a.id, now: t0.addingTimeInterval(60))
+        #expect(try service.criteria(taskID: "t1").first?.checkedAt == t0.addingTimeInterval(60))
+        #expect(try service.criteria(taskID: "t1").first?.done == true)
+        try service.toggle(id: a.id, now: t0.addingTimeInterval(120))
+        #expect(try service.criteria(taskID: "t1").first?.checkedAt == nil)
+        #expect(try service.criteria(taskID: "t1").first?.done == false)
+    }
+
+    @Test
+    func v3DatabaseMigratesToV4KeepingCriteria() throws {
+        let queue = try DatabaseQueue()
+        try FocusStore.migrator(upTo: "v3").migrate(queue)
+        try queue.write { db in
+            try db.execute(sql: "INSERT INTO task_criteria (id, taskId, text, done, position, createdAt) VALUES ('c1', 't1', 'x', 1, 1, ?)", arguments: [t0])
+        }
+        try FocusStore.migrator(upTo: nil).migrate(queue)
+        let columns = try queue.read { db in try db.columns(in: "task_criteria").map(\.name) }
+        #expect(columns.contains("checkedAt"))
+        let row = try queue.read { db in try TaskCriterion.fetchOne(db, key: "c1") }
+        #expect(row?.done == true)
+        #expect(row?.checkedAt == nil)
     }
 
     @Test

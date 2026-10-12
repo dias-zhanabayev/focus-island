@@ -183,4 +183,20 @@ struct SessionHubTests {
         let result = rows([session("a", .completed, updatedMinutes: 5)], unseen: ["a"])
         #expect(result.first?.detail == "Claude закончил 0 мин назад")
     }
+
+    @Test
+    func doneSessionOfTaskIsSettledAndSkippedByPolicies() {
+        var done = record("d", taskId: "t1")
+        done.doneAt = t0
+        var orphan = record("o")
+        orphan.doneAt = t0
+        let result = rows([session("d", .completed), session("o", .running)], records: [done, orphan], tasks: [task("t1")])
+        let byID = Dictionary(uniqueKeysWithValues: result.map { ($0.id, $0) })
+        #expect(byID["d"]?.group == .done)
+        #expect(byID["d"]?.detail == "Готово")
+        #expect(byID["o"]?.group != .done)
+        #expect(HubGroup.done.isSettled && HubGroup.parked.isSettled && !HubGroup.idle.isSettled)
+        #expect(OverloadPolicy.evaluate(rows: [byID["d"]!], limit: 0) == nil)
+        #expect(StalledPolicy.stalled(rows: [byID["d"]!], reminderMinutes: 0, now: now(500)).isEmpty)
+    }
 }

@@ -78,8 +78,9 @@ public final class BoardService: Sendable {
         }
     }
 
-    public func deleteTask(id: String) throws {
+    public func deleteTask(id: String, now: Date = .now) throws {
         try store.dbQueue.write { db in
+            try PomodoroStore.stopForDeletedTask(taskID: id, now: now, db: db)
             try db.execute(sql: "UPDATE sessions SET taskId = NULL WHERE taskId = ?", arguments: [id])
             try db.execute(sql: "UPDATE queued_prompts SET taskId = NULL WHERE taskId = ?", arguments: [id])
             try db.execute(sql: "UPDATE activity_spans SET taskId = NULL WHERE taskId = ?", arguments: [id])

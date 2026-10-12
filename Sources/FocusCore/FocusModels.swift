@@ -70,8 +70,9 @@ public struct SessionRecord: Codable, Equatable, Identifiable, Sendable, Fetchab
     public var transcriptPath: String?
     public var parkedAt: Date?
     public var lastSeenAt: Date?
+    public var doneAt: Date?
 
-    public init(id: String, cwd: String?, projectName: String?, title: String, firstPrompt: String?, lastPrompt: String?, lastAssistantMessage: String?, startedAt: Date, lastActivityAt: Date, endedAt: Date?, status: SessionRecordStatus, taskId: String?, transcriptPath: String?, parkedAt: Date? = nil, lastSeenAt: Date? = nil) {
+    public init(id: String, cwd: String?, projectName: String?, title: String, firstPrompt: String?, lastPrompt: String?, lastAssistantMessage: String?, startedAt: Date, lastActivityAt: Date, endedAt: Date?, status: SessionRecordStatus, taskId: String?, transcriptPath: String?, parkedAt: Date? = nil, lastSeenAt: Date? = nil, doneAt: Date? = nil) {
         self.id = id
         self.cwd = cwd
         self.projectName = projectName
@@ -87,6 +88,7 @@ public struct SessionRecord: Codable, Equatable, Identifiable, Sendable, Fetchab
         self.transcriptPath = transcriptPath
         self.parkedAt = parkedAt
         self.lastSeenAt = lastSeenAt
+        self.doneAt = doneAt
     }
 }
 
@@ -145,14 +147,16 @@ public struct TaskCriterion: Codable, Equatable, Identifiable, Sendable, Fetchab
     public var done: Bool
     public var position: Double
     public var createdAt: Date
+    public var checkedAt: Date?
 
-    public init(id: String, taskId: String, text: String, done: Bool, position: Double, createdAt: Date) {
+    public init(id: String, taskId: String, text: String, done: Bool, position: Double, createdAt: Date, checkedAt: Date? = nil) {
         self.id = id
         self.taskId = taskId
         self.text = text
         self.done = done
         self.position = position
         self.createdAt = createdAt
+        self.checkedAt = checkedAt
     }
 }
 

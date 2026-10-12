@@ -191,4 +191,21 @@ struct SessionHistoryTests {
         let ids = try history.sessions(startedFrom: Date(timeIntervalSince1970: 100), to: Date(timeIntervalSince1970: 200)).map(\.id)
         #expect(Set(ids) == ["b", "c"])
     }
+
+    @Test
+    func markDoneAndNewPromptReturnsSession() throws {
+        let history = SessionHistory(store: try FocusStore.inMemory())
+        try history.record(SessionObservation(session: makeSession(updatedAt: t0)))
+        try history.park(sessionID: "s1", at: t0)
+        try history.markDone(sessionID: "s1", at: t0.addingTimeInterval(1))
+        #expect(try history.session(id: "s1")?.doneAt == t0.addingTimeInterval(1))
+        #expect(try history.session(id: "s1")?.parkedAt == nil)
+        try history.record(SessionObservation(session: makeSession(updatedAt: t0.addingTimeInterval(2))))
+        #expect(try history.session(id: "s1")?.doneAt != nil)
+        try history.record(SessionObservation(session: makeSession(lastPrompt: "ещё одно", updatedAt: t0.addingTimeInterval(3))))
+        #expect(try history.session(id: "s1")?.doneAt == nil)
+        try history.markDone(sessionID: "s1", at: t0)
+        try history.unmarkDone(sessionID: "s1")
+        #expect(try history.session(id: "s1")?.doneAt == nil)
+    }
 }

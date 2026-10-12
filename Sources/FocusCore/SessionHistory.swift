@@ -60,6 +60,7 @@ public final class SessionHistory: Sendable {
                 existing.firstPrompt = existing.firstPrompt ?? observation.firstPrompt
                 if let newPrompt = observation.lastPrompt, newPrompt != existing.lastPrompt {
                     existing.parkedAt = nil
+                    existing.doneAt = nil
                 }
                 existing.lastPrompt = observation.lastPrompt ?? existing.lastPrompt
                 existing.lastAssistantMessage = observation.lastAssistantMessage ?? existing.lastAssistantMessage
@@ -102,6 +103,18 @@ public final class SessionHistory: Sendable {
     public func unpark(sessionID: String) throws {
         try store.dbQueue.write { db in
             try db.execute(sql: "UPDATE sessions SET parkedAt = NULL WHERE id = ?", arguments: [sessionID])
+        }
+    }
+
+    public func markDone(sessionID: String, at date: Date) throws {
+        try store.dbQueue.write { db in
+            try db.execute(sql: "UPDATE sessions SET doneAt = ?, parkedAt = NULL WHERE id = ?", arguments: [date, sessionID])
+        }
+    }
+
+    public func unmarkDone(sessionID: String) throws {
+        try store.dbQueue.write { db in
+            try db.execute(sql: "UPDATE sessions SET doneAt = NULL WHERE id = ?", arguments: [sessionID])
         }
     }
 

@@ -83,12 +83,12 @@ struct FocusCoordinatorTriggerTests {
     }
 
     @Test
-    func nextActionReplacesLowerCardOnTick() throws {
+    func nextActionShowsOnTickWithWaitingSessions() throws {
         let h = try make()
         let c = h.coordinator
         c.sessionsDidChange([session("s1", .running, at: t0), session("s2", .waitingForApproval, at: t0.addingTimeInterval(-minutes(20)))], now: t0)
         c.tick(now: t0.addingTimeInterval(1))
-        #expect(c.card == .stalled(sessionIDs: ["s2"]))
+        #expect(c.card == nil)
         c.tick(now: t0.addingTimeInterval(15))
         guard case let .nextAction(triggering, _) = c.card else {
             Issue.record("expected nextAction, got \(String(describing: c.card))")
@@ -170,60 +170,6 @@ struct FocusCoordinatorTriggerTests {
         #expect(c.toast == nil)
         c.sessionsDidChange(Array(four.dropFirst(2)), now: t0.addingTimeInterval(11))
         #expect(c.toast == nil)
-    }
-
-    @Test
-    func stalledThrottledThirtyMinutes() throws {
-        let h = try make()
-        let c = h.coordinator
-        c.sessionsDidChange([session("s1", .waitingForApproval, at: t0)], now: t0)
-        c.tick(now: t0.addingTimeInterval(minutes(14)))
-        #expect(c.card == nil)
-        c.tick(now: t0.addingTimeInterval(minutes(15)))
-        #expect(c.card == .stalled(sessionIDs: ["s1"]))
-        c.perform(.dismiss, now: t0.addingTimeInterval(minutes(16)))
-        c.tick(now: t0.addingTimeInterval(minutes(30)))
-        #expect(c.card == nil)
-        c.tick(now: t0.addingTimeInterval(minutes(45)))
-        #expect(c.card == .stalled(sessionIDs: ["s1"]))
-    }
-
-    @Test
-    func stalledDoesNotReplaceNextAction() throws {
-        let h = try make()
-        let c = h.coordinator
-        c.settings.stalledReminderMinutes = 5
-        c.sessionsDidChange([session("s1", .running, at: t0), session("s2", .waitingForApproval, at: t0.addingTimeInterval(-600))], now: t0)
-        c.tick(now: t0.addingTimeInterval(15))
-        guard case .nextAction = c.card else {
-            Issue.record("expected nextAction, got \(String(describing: c.card))")
-            return
-        }
-        c.tick(now: t0.addingTimeInterval(16))
-        guard case .nextAction = c.card else {
-            Issue.record("expected nextAction to stay, got \(String(describing: c.card))")
-            return
-        }
-        c.perform(.dismiss, now: t0.addingTimeInterval(20))
-        c.tick(now: t0.addingTimeInterval(21))
-        #expect(c.card == .stalled(sessionIDs: ["s2"]))
-    }
-
-    @Test
-    func deferStalledParks() throws {
-        let h = try make()
-        let c = h.coordinator
-        c.sessionsDidChange([session("s1", .waitingForApproval, at: t0), session("s2", .waitingForAnswer, at: t0.addingTimeInterval(60))], now: t0.addingTimeInterval(60))
-        c.tick(now: t0.addingTimeInterval(minutes(17)))
-        #expect(c.card == .stalled(sessionIDs: ["s1", "s2"]))
-        c.perform(.deferStalled(sessionIDs: ["s1", "s2"]), now: t0.addingTimeInterval(minutes(18)))
-        #expect(c.card == nil)
-        #expect(c.hubRows.allSatisfy { $0.group == .parked })
-        let history = SessionHistory(store: h.store)
-        #expect(try history.session(id: "s1")?.parkedAt != nil)
-        #expect(try history.session(id: "s2")?.parkedAt != nil)
-        c.tick(now: t0.addingTimeInterval(minutes(60)))
-        #expect(c.card == nil)
     }
 
     @Test
@@ -347,21 +293,6 @@ struct FocusCoordinatorTriggerTests {
         #expect(c.pendingBindingSessionIDs == ["a", "b"])
         c.requestBinding(sessionID: "b")
         #expect(c.pendingBindingSessionIDs == ["b", "a"])
-    }
-
-    @Test
-    func stalledCardClosesWhenNoSessionStaysStalled() throws {
-        let h = try make()
-        let c = h.coordinator
-        c.sessionsDidChange([session("s1", .waitingForAnswer, at: t0)], now: t0)
-        c.tick(now: t0.addingTimeInterval(minutes(20)))
-        guard case .stalled = c.card else {
-            Issue.record("expected stalled card")
-            return
-        }
-        c.sessionsDidChange([session("s1", .running, at: t0.addingTimeInterval(minutes(21)))], now: t0.addingTimeInterval(minutes(21)))
-        c.tick(now: t0.addingTimeInterval(minutes(21)))
-        #expect(c.card == nil)
     }
 
     @Test

@@ -132,9 +132,9 @@ struct FocusCoordinatorCardTests {
     func priorityOrder() throws {
         let ordered: [FocusCard] = [
             .onboarding, .nudge, .returned(sessionID: "a"), .reEntry(sessionID: "a"), .overload(newSessionID: "a"),
-            .nextAction(triggeringSessionID: "a", eventID: nil), .stalled(sessionIDs: ["a"]), .dayStart,
+            .nextAction(triggeringSessionID: "a", eventID: nil), .dayStart,
         ]
-        #expect(ordered.map(\.priority) == [8, 7, 6, 5, 4, 3, 2, 1])
+        #expect(ordered.map(\.priority) == [10, 9, 7, 6, 5, 4, 2])
         for (index, card) in ordered.enumerated() {
             #expect(FocusCard.canReplace(nil, with: card))
             #expect(FocusCard.canReplace(card, with: card))

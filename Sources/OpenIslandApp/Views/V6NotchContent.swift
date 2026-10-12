@@ -27,16 +27,28 @@ enum IslandRightSlotContent: Equatable {
     case agents([AgentGridCell]) // balanced grid, one tile per session
     case text(String)
     case alert(String)
+    case hint(String)
+    case status(String)
+    case startFocus(Int)
 }
 
-enum IslandLeftSlotContent: Equatable {
+struct PomodoroEar: Equatable, Sendable {
+    let phase: PomodoroPhase
+    let remainingSeconds: Int
+    let progress: Double
+    let isPaused: Bool
+}
+
+indirect enum IslandLeftSlotContent: Equatable {
     case focusSummary(running: Int, waiting: Int, done: Int)
     case progress(String)
+    case pomodoro(PomodoroEar, base: IslandLeftSlotContent?)
+    case waitingOutside(Int, quiet: Bool)
 }
 
 enum FocusEars {
     nonisolated static func leftSlot(rows: [HubRow]) -> IslandLeftSlotContent? {
-        let live = rows.filter { $0.group != .parked }
+        let live = rows.filter { !$0.group.isSettled }
         if live.count >= 2 {
             return .focusSummary(
                 running: live.filter { $0.group == .running }.count,
@@ -54,14 +66,139 @@ enum FocusEars {
         return leftSlot(rows: rows)
     }
 
+    nonisolated static func leftSlot(preference: IslandRightSlot, rows: [HubRow], pomodoro: PomodoroSnapshot?) -> IslandLeftSlotContent? {
+        guard preference != .none else { return nil }
+        let base = leftSlot(rows: rows)
+        guard let pomodoro else { return base }
+        let ear = PomodoroEar(
+            phase: pomodoro.phase,
+            remainingSeconds: pomodoro.remainingSeconds,
+            progress: pomodoro.progress,
+            isPaused: pomodoro.isPaused
+        )
+        return .pomodoro(ear, base: base)
+    }
+
+    nonisolated static func leftSlot(preference: IslandRightSlot, rows: [HubRow], pomodoro: PomodoroSnapshot?, waitingOutside: Int) -> IslandLeftSlotContent? {
+        guard waitingOutside > 0 else { return leftSlot(preference: preference, rows: rows, pomodoro: pomodoro) }
+        guard preference != .none else { return nil }
+        guard let pomodoro else { return .waitingOutside(waitingOutside, quiet: false) }
+        let ear = PomodoroEar(
+            phase: pomodoro.phase,
+            remainingSeconds: pomodoro.remainingSeconds,
+            progress: pomodoro.progress,
+            isPaused: pomodoro.isPaused
+        )
+        return .pomodoro(ear, base: .waitingOutside(waitingOutside, quiet: true))
+    }
+
+    nonisolated static func waitingOutsideText(_ count: Int, quiet: Bool) -> String {
+        quiet ? "\(count)" : "\(count) ждут"
+    }
+
+    nonisolated static func clickShowsWaitingOutside(leftSlot: IslandLeftSlotContent?) -> Bool {
+        switch leftSlot {
+        case .waitingOutside?: true
+        case let .pomodoro(_, base)?: clickShowsWaitingOutside(leftSlot: base)
+        default: false
+        }
+    }
+
+    nonisolated static func pomodoroText(_ ear: PomodoroEar) -> String {
+        switch ear.phase {
+        case .focus: return PomodoroFormat.timerText(remainingSeconds: ear.remainingSeconds)
+        case .break: return "Перерыв \(FocusText.clock(TimeInterval(ear.remainingSeconds)))"
+        }
+    }
+
+    nonisolated static func taskSlot(
+        taskTitle: String?,
+        elapsedMinutes: Int?,
+        todoCount: Int,
+        isOnBreak: Bool,
+        runningCount: Int,
+        pomodoroActive: Bool = false,
+        inProgressCount: Int = 0,
+        focusMinutes: Int? = nil,
+        newSessionPending: Bool = false
+    ) -> IslandRightSlotContent? {
+        if isOnBreak && runningCount > 0 {
+            return .status("Claude работает · \(runningCount)")
+        }
+        guard taskTitle != nil else {
+            if pomodoroActive { return nil }
+            if newSessionPending { return .hint(newSessionHint) }
+            if todoCount > 0 { return .hint("Выбрать задачу · Todo \(todoCount)") }
+            return .hint(inProgressCount > 0 ? "Выбрать задачу" : "Доска пуста")
+        }
+        if !pomodoroActive, let focusMinutes {
+            return .startFocus(focusMinutes)
+        }
+        return rightSlot(toast: nil, stalled: nil, taskTitle: taskTitle, elapsedMinutes: elapsedMinutes)
+    }
+
+    nonisolated static func animationKey(_ content: IslandLeftSlotContent?) -> String {
+        switch content {
+        case nil:
+            return ""
+        case let .focusSummary(running, waiting, done)?:
+            return "summary:\(running):\(waiting):\(done)"
+        case let .progress(value)?:
+            return "progress:\(value)"
+        case let .pomodoro(ear, base)?:
+            return "pomodoro:\(ear.phase):\(ear.isPaused)|" + animationKey(base)
+        case let .waitingOutside(count, quiet)?:
+            return "waiting:\(count):\(quiet)"
+        }
+    }
+
+    nonisolated static func clickOpensPickTask(rightSlot: IslandRightSlotContent?) -> Bool {
+        if case .hint? = rightSlot { return true }
+        return false
+    }
+
+    nonisolated static func clickStartsFocus(rightSlot: IslandRightSlotContent?) -> Int? {
+        if case let .startFocus(minutes)? = rightSlot { return minutes }
+        return nil
+    }
+
+    nonisolated static func startFocusText(_ minutes: Int) -> String {
+        "▶ Фокус \(minutes)"
+    }
+
+    nonisolated static func opensIsland(after result: PickTaskOpenResult) -> Bool {
+        result != .openedBoard
+    }
+
     nonisolated static func alertOverride(
         preference: IslandRightSlot,
         toast: String?,
-        stalled: StalledBadge?
+        stalled: StalledBadge?,
+        card: FocusCard? = nil,
+        breakCountdown: Int? = nil,
+        breakMinutes: Int = 10,
+        focusMinutes: Int = 50
     ) -> IslandRightSlotContent? {
-        guard preference != .none, toast != nil || stalled != nil else { return nil }
-        return rightSlot(toast: toast, stalled: stalled, taskTitle: nil, elapsedMinutes: nil)
+        guard preference != .none else { return nil }
+        if let toast { return .alert(toast) }
+        if let slot = pomodoroCardSlot(card, breakCountdown: breakCountdown, breakMinutes: breakMinutes, focusMinutes: focusMinutes) { return slot }
+        guard stalled != nil else { return nil }
+        return rightSlot(toast: nil, stalled: stalled, taskTitle: nil, elapsedMinutes: nil)
     }
+
+    nonisolated static func pomodoroCardSlot(_ card: FocusCard?, breakCountdown: Int?, breakMinutes: Int, focusMinutes: Int) -> IslandRightSlotContent? {
+        switch card {
+        case .pomodoroEnd?:
+            if let breakCountdown { return .alert("☕ Перерыв через \(breakCountdown)") }
+            return .alert("☕ Перерыв \(breakMinutes)")
+        case .breakEnd?:
+            return .startFocus(focusMinutes)
+        default:
+            return nil
+        }
+    }
+
+    nonisolated static let newSessionHint = "✦ Новая сессия · задача?"
 
     nonisolated static func rightSlot(
         toast: String?,
@@ -108,6 +245,31 @@ struct V6RightSlotView: View {
                 .truncationMode(.tail)
                 .frame(maxWidth: V6RightSlotView.alertMaxWidth, alignment: .trailing)
                 .foregroundStyle(FocusStyle.waitingText)
+        case .hint(let value):
+            Text(value)
+                .font(.system(size: 11, weight: .medium))
+                .underline(color: FocusStyle.secondaryText.opacity(0.4))
+                .lineLimit(1)
+                .truncationMode(.tail)
+                .frame(maxWidth: V6RightSlotView.alertMaxWidth, alignment: .trailing)
+                .foregroundStyle(FocusStyle.secondaryText)
+        case .startFocus(let minutes):
+            Text(FocusEars.startFocusText(minutes))
+                .font(.system(size: 11, weight: .semibold))
+                .lineLimit(1)
+                .fixedSize(horizontal: true, vertical: false)
+                .foregroundStyle(FocusStyle.link)
+                .accessibilityLabel("Начать фокус \(minutes) минут")
+        case .status(let value):
+            HStack(spacing: 6) {
+                Circle().fill(FocusStyle.working).frame(width: 6, height: 6)
+                Text(value)
+                    .font(.system(size: 11, weight: .medium))
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                    .foregroundStyle(FocusStyle.secondaryText)
+            }
+            .frame(maxWidth: V6RightSlotView.alertMaxWidth, alignment: .trailing)
         }
     }
 
@@ -125,8 +287,12 @@ struct V6RightSlotView: View {
             return CGFloat(14.4 + max(0.0, digits - 1.0) * 7.2)
         case .text(let value):
             return min(140, CGFloat(value.count) * 6.5)
-        case .alert(let value):
+        case .alert(let value), .hint(let value):
             return min(alertMaxWidth, CGFloat(value.count) * 6.5)
+        case .status(let value):
+            return min(alertMaxWidth, 12 + CGFloat(value.count) * 6.5)
+        case .startFocus(let minutes):
+            return CGFloat(FocusEars.startFocusText(minutes).count) * 6.8
         case .agents(let cells):
             let n = cells.count
             guard n > 0 else { return 0 }
@@ -218,13 +384,50 @@ struct V6LeftSlotView: View {
             }
             .lineLimit(1)
             .fixedSize()
+        case .pomodoro(let ear, let base):
+            HStack(spacing: 8) {
+                PomodoroEarTimerView(ear: ear)
+                if let base {
+                    V6LeftSlotView(content: base)
+                }
+            }
+            .fixedSize()
+        case .waitingOutside(let count, let quiet):
+            HStack(spacing: 4) {
+                Circle()
+                    .stroke(quiet ? FocusStyle.captionText : FocusStyle.waiting, lineWidth: 1.5)
+                    .frame(width: 7, height: 7)
+                Text(FocusEars.waitingOutsideText(count, quiet: quiet))
+                    .font(.system(size: 11, weight: .medium))
+                    .monospacedDigit()
+                    .foregroundStyle(quiet ? FocusStyle.captionText : FocusStyle.waitingText)
+            }
+            .lineLimit(1)
+            .fixedSize()
+            .accessibilityLabel("Ждут вне задачи: \(count)")
         }
     }
 
+    static func timerWidth(of ear: PomodoroEar) -> CGFloat {
+        let text = CGFloat(FocusEars.pomodoroText(ear).count) * 7
+        switch ear.phase {
+        case .focus: return 18 + text
+        case .break: return text
+        }
+    }
+
+    static let pomodoroMaxWidth: CGFloat = 240
+
     static func intrinsicWidth(of content: IslandLeftSlotContent) -> CGFloat {
         switch content {
+        case .pomodoro(let ear, let base):
+            let timer = timerWidth(of: ear)
+            guard let base else { return timer }
+            return min(pomodoroMaxWidth, timer + 8 + intrinsicWidth(of: base))
         case .progress(let value):
             return min(V6RightSlotView.alertMaxWidth, CGFloat(value.count) * 6.5 + 10)
+        case .waitingOutside(let count, let quiet):
+            return 12 + CGFloat(FocusEars.waitingOutsideText(count, quiet: quiet).count) * 6.8
         case .focusSummary(let running, let waiting, let done):
             var width: CGFloat = 10 + CGFloat(String(running).count) * 7
             if waiting > 0 {
@@ -235,6 +438,33 @@ struct V6LeftSlotView: View {
             }
             return min(V6RightSlotView.alertMaxWidth, width)
         }
+    }
+}
+
+struct PomodoroEarTimerView: View {
+    let ear: PomodoroEar
+
+    var body: some View {
+        HStack(spacing: 4) {
+            if ear.phase == .focus {
+                ZStack {
+                    Circle().stroke(Color.white.opacity(0.2), lineWidth: 2)
+                    Circle()
+                        .trim(from: 0, to: max(0, min(1, ear.progress)))
+                        .stroke(FocusStyle.link, style: StrokeStyle(lineWidth: 2, lineCap: .round))
+                        .rotationEffect(.degrees(-90))
+                }
+                .frame(width: 12, height: 12)
+                .accessibilityHidden(true)
+            }
+            Text(FocusEars.pomodoroText(ear))
+                .font(.system(size: 11, weight: .semibold))
+                .monospacedDigit()
+                .foregroundStyle(ear.phase == .focus ? FocusStyle.link : FocusStyle.working)
+        }
+        .lineLimit(1)
+        .opacity(ear.isPaused ? 0.5 : 1)
+        .fixedSize()
     }
 }
 
@@ -373,7 +603,7 @@ struct V6ClosedPill: View {
     static func macbookEarWidth(for rightSlot: IslandRightSlotContent?, leftSlot: IslandLeftSlotContent? = nil) -> CGFloat {
         var need: CGFloat = 0
         switch rightSlot {
-        case .text?, .alert?:
+        case .text?, .alert?, .hint?, .status?, .startFocus?:
             need = V6RightSlotView.intrinsicWidth(of: rightSlot!)
         default:
             break
@@ -440,7 +670,7 @@ struct V6ClosedPill: View {
             value: AnyHashable([
                 AnyHashable(label ?? ""),
                 AnyHashable(rightSlot.map(RightSlotKey.init) ?? .none),
-                AnyHashable(leftSlot.map { "\($0)" } ?? ""),
+                AnyHashable(FocusEars.animationKey(leftSlot)),
                 AnyHashable(mode),
             ])
         )
@@ -484,6 +714,9 @@ private enum RightSlotKey: Hashable {
     case agents(Int)
     case text(String)
     case alert(String)
+    case hint(String)
+    case status(String)
+    case startFocus(Int)
 
     init(_ content: IslandRightSlotContent) {
         switch content {
@@ -491,6 +724,9 @@ private enum RightSlotKey: Hashable {
         case .agents(let cs):  self = .agents(cs.count)
         case .text(let v):     self = .text(v)
         case .alert(let v):    self = .alert(v)
+        case .hint(let v):     self = .hint(v)
+        case .status(let v):   self = .status(v)
+        case .startFocus(let m): self = .startFocus(m)
         }
     }
 }

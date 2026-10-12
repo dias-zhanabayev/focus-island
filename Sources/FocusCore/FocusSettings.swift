@@ -36,6 +36,9 @@ public struct FocusSettings: Codable, Equatable, Sendable {
     public static let defaultsKey = "focus.settings"
     public static let maxParallelRange = 1...6
     public static let stalledReminderRange = 5...60
+    public static let pomodoroFocusRange = 5...120
+    public static let pomodoroBreakRange = 1...30
+    public static let pomodoroCycleRange = 2...8
 
     public var nextActionEnabled = true
     public var nextActionDelay: TimeInterval = 15
@@ -48,6 +51,14 @@ public struct FocusSettings: Codable, Equatable, Sendable {
     public var maxParallelSessions: Int = 3
     public var stalledReminderMinutes: Int = 15
     public var dayStartEnabled: Bool = true
+    public var autoBreakEnabled: Bool = true
+    public var breakSoundEnabled: Bool = true
+    public var pomodoroFocusMinutes: Int = 50
+    public var pomodoroBreakMinutes: Int = 10
+    public var pomodoroCycle: Int = 4
+    private var timerDefaultsVersion = Self.currentTimerDefaultsVersion
+
+    private static let currentTimerDefaultsVersion = 2
 
     public init() {}
 
@@ -67,6 +78,20 @@ public struct FocusSettings: Codable, Equatable, Sendable {
         let stalled = try container.decodeIfPresent(Int.self, forKey: .stalledReminderMinutes) ?? defaults.stalledReminderMinutes
         stalledReminderMinutes = min(Self.stalledReminderRange.upperBound, max(Self.stalledReminderRange.lowerBound, stalled))
         dayStartEnabled = try container.decodeIfPresent(Bool.self, forKey: .dayStartEnabled) ?? defaults.dayStartEnabled
+        autoBreakEnabled = try container.decodeIfPresent(Bool.self, forKey: .autoBreakEnabled) ?? defaults.autoBreakEnabled
+        breakSoundEnabled = try container.decodeIfPresent(Bool.self, forKey: .breakSoundEnabled) ?? defaults.breakSoundEnabled
+        let focus = try container.decodeIfPresent(Int.self, forKey: .pomodoroFocusMinutes) ?? defaults.pomodoroFocusMinutes
+        pomodoroFocusMinutes = min(Self.pomodoroFocusRange.upperBound, max(Self.pomodoroFocusRange.lowerBound, focus))
+        let pause = try container.decodeIfPresent(Int.self, forKey: .pomodoroBreakMinutes) ?? defaults.pomodoroBreakMinutes
+        pomodoroBreakMinutes = min(Self.pomodoroBreakRange.upperBound, max(Self.pomodoroBreakRange.lowerBound, pause))
+        let cycle = try container.decodeIfPresent(Int.self, forKey: .pomodoroCycle) ?? defaults.pomodoroCycle
+        pomodoroCycle = min(Self.pomodoroCycleRange.upperBound, max(Self.pomodoroCycleRange.lowerBound, cycle))
+        let version = try container.decodeIfPresent(Int.self, forKey: .timerDefaultsVersion) ?? 1
+        if version < Self.currentTimerDefaultsVersion, pomodoroFocusMinutes == 25, pomodoroBreakMinutes == 5 {
+            pomodoroFocusMinutes = defaults.pomodoroFocusMinutes
+            pomodoroBreakMinutes = defaults.pomodoroBreakMinutes
+        }
+        timerDefaultsVersion = Self.currentTimerDefaultsVersion
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -81,6 +106,12 @@ public struct FocusSettings: Codable, Equatable, Sendable {
         case maxParallelSessions
         case stalledReminderMinutes
         case dayStartEnabled
+        case autoBreakEnabled
+        case breakSoundEnabled
+        case pomodoroFocusMinutes
+        case pomodoroBreakMinutes
+        case pomodoroCycle
+        case timerDefaultsVersion
     }
 
     public static func load(from defaults: UserDefaults) -> FocusSettings {

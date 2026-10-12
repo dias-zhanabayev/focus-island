@@ -282,7 +282,8 @@ final class OverlayPanelController {
 
         if model.notchStatus == .closed && inClosedSurfaceArea {
             cancelHoverOpenImmediately()
-            model.notchOpen(reason: .click)
+            let onLeftSide = closedSurfaceRect(for: model).map { screenLocation.x < $0.midX } ?? false
+            model.openIslandFromClosedPillClick(onLeftSide: onLeftSide)
         } else if model.notchStatus == .opened {
             if !isPointInExpandedArea(screenLocation) {
                 // Keep the island open while a permission/question is pending

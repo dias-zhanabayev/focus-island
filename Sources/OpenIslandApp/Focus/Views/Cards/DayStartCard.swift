@@ -165,7 +165,7 @@ struct DayStartCard: View {
             case .waiting, .review, .idle, .parked:
                 guard let activity = lastActivity(row.id) else { return false }
                 return activity < startOfToday
-            case .running, .unbound:
+            case .running, .unbound, .done:
                 return false
             }
         }

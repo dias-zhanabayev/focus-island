@@ -41,6 +41,11 @@ public enum HubGroup: Int, CaseIterable, Sendable {
     case idle
     case unbound
     case parked
+    case done
+
+    public var isSettled: Bool {
+        self == .parked || self == .done
+    }
 
     public var title: String {
         switch self {
@@ -50,6 +55,7 @@ public enum HubGroup: Int, CaseIterable, Sendable {
         case .idle: "Твой ход"
         case .unbound: "Без задачи"
         case .parked: "На паузе"
+        case .done: "Готовые"
         }
     }
 }
@@ -99,7 +105,9 @@ public enum SessionHub {
         let minutes = max(0, Int(now.timeIntervalSince(session.updatedAt) / 60))
 
         let group: HubGroup
-        if record?.parkedAt != nil {
+        if record?.doneAt != nil, record?.taskId != nil {
+            group = .done
+        } else if record?.parkedAt != nil {
             group = .parked
         } else if session.phase == .waitingForApproval || session.phase == .waitingForAnswer {
             group = .waiting
@@ -169,6 +177,8 @@ public enum SessionHub {
             return "Нет активности \(minutes) мин"
         case .parked:
             return "На паузе · \(minutes) мин"
+        case .done:
+            return "Готово"
         }
     }
 }
@@ -185,7 +195,7 @@ public enum StalledPolicy {
                 case .waiting: return minutes >= reminderMinutes
                 case .review: return minutes >= reviewMinutes
                 case .unbound: return minutes >= unboundMinutes
-                case .running, .idle, .parked: return false
+                case .running, .idle, .parked, .done: return false
                 }
             }
             .sorted { $0.since < $1.since }
@@ -206,7 +216,7 @@ public struct OverloadSuggestion: Equatable, Sendable {
 
 public enum OverloadPolicy {
     public static func evaluate(rows: [HubRow], limit: Int) -> OverloadSuggestion? {
-        let live = rows.filter { $0.group != .parked }
+        let live = rows.filter { !$0.group.isSettled }
         guard live.count > limit else { return nil }
         let attend = live.filter { $0.group == .waiting }.min { $0.since < $1.since }
         let park = live.filter { $0.group == .running }.max { $0.since < $1.since }

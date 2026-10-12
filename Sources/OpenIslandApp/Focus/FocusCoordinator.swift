@@ -12,19 +12,34 @@ enum FocusCard: Equatable {
     case reEntry(sessionID: String)
     case overload(newSessionID: String)
     case nextAction(triggeringSessionID: String, eventID: Int64?)
-    case stalled(sessionIDs: [String])
     case dayStart
+    case pickTask
+    case bindToTask(taskID: String)
+    case pomodoroEnd(pomodoroID: String)
+    case breakEnd(pomodoroID: String)
 
     var priority: Int {
         switch self {
-        case .onboarding: 8
-        case .nudge: 7
-        case .returned: 6
-        case .reEntry: 5
-        case .overload: 4
-        case .nextAction: 3
-        case .stalled: 2
-        case .dayStart: 1
+        case .onboarding: 10
+        case .nudge: 9
+        case .pomodoroEnd, .breakEnd: 8
+        case .returned: 7
+        case .reEntry: 6
+        case .overload: 5
+        case .nextAction: 4
+        case .dayStart, .pickTask, .bindToTask: 2
+        }
+    }
+
+    var bindTaskID: String? {
+        if case let .bindToTask(taskID) = self { return taskID }
+        return nil
+    }
+
+    var pomodoroID: String? {
+        switch self {
+        case let .pomodoroEnd(id), let .breakEnd(id): id
+        default: nil
         }
     }
 
@@ -52,7 +67,6 @@ enum FocusCardAction: Equatable {
     case allowDistraction
     case returnToWork
     case startDay(taskIDs: [String])
-    case deferStalled(sessionIDs: [String])
     case dismiss
 
     var countsAsReaction: Bool {
@@ -84,15 +98,19 @@ final class FocusCoordinator {
     static let reEntryThreshold: TimeInterval = 600
     static let changedFilesCacheLifetime: TimeInterval = 10
     static let toastLifetime: TimeInterval = 4
+    static let closedTaskLifetime: TimeInterval = 8
+    nonisolated static let breakCountdownSeconds: TimeInterval = 5
+    static let breakCountdownFreshness: TimeInterval = 60
+    static let breakSoundName = "Glass"
     static let todaySummaryInterval: TimeInterval = 60
     static let clipboardToast = "Промпт в буфере — вставь ⌘V"
-    static let stalledCardInterval: TimeInterval = 1800
     static let stalledBadgeMinutes = 10
     static let onboardingAutomationOpenedKey = "focus.onboarding.automationOpened"
     static let onboardingTaskAddedKey = "focus.onboarding.taskAdded"
     static let onboardingDismissedKey = "focus.onboarding.dismissed"
     static let onboardingPresentedKey = "focus.onboarding.presented"
     static let boundSessionsDoneWindow: TimeInterval = 7 * 86_400
+    static let recoveredEndCardWindow: TimeInterval = 2 * 3600
 
     static func slotToast(projectName: String) -> String {
         "Освободился слот — вернуть \(projectName)?"
@@ -104,16 +122,38 @@ final class FocusCoordinator {
     private(set) var pendingBindingSessionIDs: [String] = []
     private(set) var hubRows: [HubRow] = []
     private(set) var todaySummary = TodaySummary(focusSeconds: 0, distractionSeconds: 0)
+    private(set) var pomodoro: PomodoroSnapshot?
+    private(set) var pomodoroCountToday = 0
+    private(set) var pendingStartTaskID: String?
+    private(set) var focusTaskOverrideID: String?
+    private(set) var focusCleared = false
+    private(set) var lastJumpedSessionID: String?
     private(set) var todaySummaryRefreshedAt: Date?
     private(set) var alternatives: [NextAlternative] = []
     private(set) var changedFiles: [String: [ChangedFile]] = [:]
     private(set) var toast: String?
+    private(set) var closedTask: ClosedTaskNotice?
+    private(set) var breakCountdownEndsAt: Date?
+    private(set) var breakCountdownLeft: Int?
+    nonisolated static let labelRetrySeconds: TimeInterval = 15
+    nonisolated static let labelRefreshSeconds: TimeInterval = 300
+    private(set) var sessionLabels: [String: String] = [:]
+    private(set) var sessionStatuses: [String: String] = [:]
+    @ObservationIgnored var lookupSessionLabels: (@Sendable (Set<String>) async -> [String: SessionLabel])?
+    @ObservationIgnored private var labelLookupInFlight = false
+    @ObservationIgnored private var labelLookedUpAt: [String: Date] = [:]
+    private(set) var breakMinutesChoice: Int?
     private(set) var lastJumpProjectName: String?
     private(set) var distractionTarget: String?
     private(set) var nudgeSessionIDState: String?
     private(set) var nudgeSuggestionState: NextAlternative?
     private(set) var distractionStartedAt: Date?
     private(set) var stalledBadge: StalledBadge?
+    private(set) var waitingOutside: [HubRow] = []
+    private(set) var doneSessionNotice: DoneSessionNotice?
+    private(set) var allDoneDismissed: [String: Int] = [:]
+    @ObservationIgnored private var doneSessionShownAt: Date?
+    private(set) var waitingOutsideExpanded = false
     private(set) var focusElapsedMinutes: Int?
     private(set) var hooksInstalled: Bool?
     private(set) var onboardingAutomationOpened: Bool
@@ -138,6 +178,7 @@ final class FocusCoordinator {
     }
 
     @ObservationIgnored var presentCard: (() -> Void)?
+    @ObservationIgnored var playSound: (String) -> Void = { _ in }
     @ObservationIgnored var onSettingsChanged: ((FocusSettings) -> Void)?
     @ObservationIgnored var jumpToSession: ((String) -> Void)?
     @ObservationIgnored private(set) var changedFilesTask: Task<Void, Never>?
@@ -153,6 +194,12 @@ final class FocusCoordinator {
     @ObservationIgnored private let promptQueue: PromptQueue
     @ObservationIgnored private let dayPlans: DayPlanStore
     @ObservationIgnored private let activityLog: ActivityLog
+    @ObservationIgnored private let pomodoroStore: PomodoroStore
+    @ObservationIgnored private var activePomodoro: Pomodoro?
+    @ObservationIgnored private var activeCycleCompleted = 0
+    @ObservationIgnored private var pendingPomodoroCard: FocusCard?
+    @ObservationIgnored private var queuedCards: [FocusCard] = []
+    @ObservationIgnored private var finishedTurnLog: [(sessionID: String, at: Date)] = []
     @ObservationIgnored private let defaults: UserDefaults
     @ObservationIgnored private let launcher: TerminalLaunching
     @ObservationIgnored private let promptSender: PromptSending
@@ -176,6 +223,7 @@ final class FocusCoordinator {
     @ObservationIgnored private var tickTask: Task<Void, Never>?
     @ObservationIgnored private var nextActionShownAt: Date?
     @ObservationIgnored private var toastShownAt: Date?
+    @ObservationIgnored private var closedTaskShownAt: Date?
     @ObservationIgnored private var pendingReturnedSessionIDs: [String] = []
     @ObservationIgnored private var deferredReturnedSessionIDs: Set<String> = []
     @ObservationIgnored private var presenceTracker = PresenceTracker()
@@ -184,7 +232,6 @@ final class FocusCoordinator {
     @ObservationIgnored private var youSpan: OpenSpan?
     @ObservationIgnored private var knownSessionIDs: Set<String> = []
     @ObservationIgnored private var slotArmed = false
-    @ObservationIgnored private var lastStalledShownAt: Date?
     @ObservationIgnored private var dayStartShownDay: String?
     @ObservationIgnored private var started = false
     @ObservationIgnored private var spansSuspended = false
@@ -215,6 +262,7 @@ final class FocusCoordinator {
         self.promptQueue = PromptQueue(store: store)
         self.dayPlans = DayPlanStore(store: store)
         self.activityLog = ActivityLog(store: store)
+        self.pomodoroStore = PomodoroStore(store: store)
         self.onboardingAutomationOpened = defaults.bool(forKey: Self.onboardingAutomationOpenedKey)
         self.onboardingTaskAdded = defaults.bool(forKey: Self.onboardingTaskAddedKey)
         self.onboardingDismissed = defaults.bool(forKey: Self.onboardingDismissedKey)
@@ -241,7 +289,71 @@ final class FocusCoordinator {
     }
 
     var currentTask: FocusTask? {
-        board.currentTask(liveSessions: liveRecords)
+        if let task = board.task(id: pomodoro?.taskID), task.boardColumn != .done {
+            return task
+        }
+        if let id = focusTaskOverrideID, let task = board.task(id: id), task.boardColumn == .inProgress {
+            return task
+        }
+        if focusCleared { return nil }
+        return board.currentTask(liveSessions: liveRecords)
+    }
+
+    var focusTaskSessions: [HubRow] {
+        guard let taskID = currentTask?.id else { return [] }
+        return hubRows.filter { $0.taskID == taskID && $0.group != .done }
+    }
+
+    var focusTaskDoneSessions: [HubRow] {
+        guard let taskID = currentTask?.id else { return [] }
+        return hubRows.filter { $0.taskID == taskID && $0.group == .done }
+    }
+
+    func markSessionDone(sessionID: String, now: Date = .now) {
+        attempt { try history.markDone(sessionID: sessionID, at: now) }
+        doneSessionNotice = DoneSessionNotice(sessionID: sessionID, title: sessionTitle(sessionID))
+        doneSessionShownAt = now
+        reload()
+        workRevision += 1
+        refreshHub(now: now)
+    }
+
+    func reopenDoneSession(sessionID: String, now: Date = .now) {
+        attempt { try history.unmarkDone(sessionID: sessionID) }
+        if doneSessionNotice?.sessionID == sessionID {
+            doneSessionNotice = nil
+            doneSessionShownAt = nil
+        }
+        reload()
+        workRevision += 1
+        refreshHub(now: now)
+    }
+
+    func moveTargets(excludingTaskID taskID: String?) -> [FocusTask] {
+        (board.tasks(in: .inProgress) + board.tasks(in: .todo)).filter { $0.id != taskID }
+    }
+
+    func showsAllDoneSuggestion(taskID: String) -> Bool {
+        let rows = hubRows.filter { $0.taskID == taskID }
+        let done = rows.filter { $0.group == .done }.count
+        return Self.allDone(doneCount: done, activeCount: rows.count - done, dismissedAt: allDoneDismissed[taskID])
+    }
+
+    func dismissAllDoneSuggestion(taskID: String) {
+        allDoneDismissed[taskID] = hubRows.filter { $0.taskID == taskID && $0.group == .done }.count
+    }
+
+    nonisolated static func allDone(doneCount: Int, activeCount: Int, dismissedAt: Int?) -> Bool {
+        doneCount > 0 && activeCount == 0 && dismissedAt != doneCount
+    }
+
+    var hereSessionID: String? {
+        guard let id = lastJumpedSessionID, focusTaskSessions.contains(where: { $0.id == id }) else { return nil }
+        return id
+    }
+
+    var isOnBreak: Bool {
+        pomodoro?.phase == .break
     }
 
     func start(initialSessions: [AgentSession], now: Date = .now) {
@@ -256,9 +368,11 @@ final class FocusCoordinator {
             unseenCompleted.remove(session.id)
         }
         reload()
+        restorePomodoro(now: now)
         started = true
         sessionsDidChange(initialSessions, now: now)
         refreshTodaySummary(now: now, force: true)
+        presentPendingPomodoroCard(now: now)
         if runBackfill {
             let store = store
             Task.detached(priority: .utility) {
@@ -317,6 +431,9 @@ final class FocusCoordinator {
             runStartedAt[removedID] = nil
             lastTurnDurations[removedID] = nil
             turnPrompts[removedID] = nil
+            if lastJumpedSessionID == removedID {
+                lastJumpedSessionID = nil
+            }
             changedFiles[removedID] = nil
             changedFilesFetchedAt[removedID] = nil
             pendingBindingSessionIDs.removeAll { $0 == removedID }
@@ -375,7 +492,13 @@ final class FocusCoordinator {
             turnTracker.observe(sessionID: session.id, phase: session.phase, lastUserPrompt: session.claudeMetadata?.lastUserPrompt, at: now)
         }
 
+        if !finishedTurns.isEmpty {
+            finishedTurnLog.removeAll { now.timeIntervalSince($0.at) > 2 * 86_400 }
+            finishedTurnLog.append(contentsOf: finishedTurns.map { ($0, now) })
+        }
+
         latestSessions = relevant
+        refreshSessionLabels()
         let liveIDs = Set(relevant.filter { !$0.isSessionEnded }.map(\.id))
         let liveSetChanged = liveIDs != liveSessionIDs
         if liveSetChanged {
@@ -418,10 +541,23 @@ final class FocusCoordinator {
             toast = nil
             toastShownAt = nil
         }
+        if let shownAt = closedTaskShownAt, now.timeIntervalSince(shownAt) >= Self.closedTaskLifetime {
+            closedTask = nil
+            closedTaskShownAt = nil
+        }
+        if let shownAt = doneSessionShownAt, now.timeIntervalSince(shownAt) >= Self.closedTaskLifetime {
+            doneSessionNotice = nil
+            doneSessionShownAt = nil
+        }
+        handlePomodoroExpiry(now: now)
+        refreshPomodoroSnapshot(now: now)
+        presentPendingPomodoroCard(now: now)
+        runBreakCountdown(now: now)
+        refreshSessionLabels(now: now)
         refreshHub(now: now)
         syncYouSpan(now: now)
         tickNextAction(now: now)
-        presentStalledIfNeeded(now: now)
+        presentQueuedCards(now: now)
         refreshTodaySummary(now: now)
     }
 
@@ -433,7 +569,8 @@ final class FocusCoordinator {
         }
         todaySummaryRefreshedAt = now
         let report = dayReport(day: now, now: now)
-        let summary = TodaySummary(focusSeconds: report?.youSeconds ?? 0, distractionSeconds: report?.distractionSeconds ?? 0)
+        refreshPomodoroCount(now: now)
+        let summary = TodaySummary(focusSeconds: report?.youSeconds ?? 0, distractionSeconds: report?.distractionSeconds ?? 0, pomodoroCount: pomodoroCountToday)
         if summary != todaySummary {
             todaySummary = summary
         }
@@ -445,6 +582,10 @@ final class FocusCoordinator {
             closeCard(reacted: false, now: now)
         }
         presentPendingReturned(now: now)
+        if isOnBreak {
+            _ = turnTracker.takeDueSessions(now: now)
+            return
+        }
         if let card, !cardIsDeferredReturned, card.priority >= FocusCard.nextAction(triggeringSessionID: "", eventID: nil).priority { return }
         guard settings.nextActionEnabled else {
             _ = turnTracker.takeDueSessions(now: now)
@@ -471,6 +612,10 @@ final class FocusCoordinator {
     func overlayDidClose(now: Date = .now) {
         guard let card else { return }
         if card == .onboarding && onboardingPending { return }
+        if card.pomodoroID != nil {
+            deferredReturnedSessionIDs.formUnion(pendingReturnedSessionIDs)
+            return
+        }
         closeCard(reacted: false, now: now)
         deferredReturnedSessionIDs.formUnion(pendingReturnedSessionIDs)
         presentPendingReturned(now: now)
@@ -527,7 +672,7 @@ final class FocusCoordinator {
             closeCard(reacted: true, now: now)
             directJump(sessionID: sessionID, now: now)
         case let .startTask(taskID):
-            startTask(taskID: taskID, now: now)
+            launchTaskSession(taskID: taskID, now: now)
         case let .quickAdd(title):
             createTask(title: title, column: .todo, projectPath: cardSessionID.flatMap(sessionCWD))
         case let .bindTriggering(taskID):
@@ -535,7 +680,7 @@ final class FocusCoordinator {
             bind(sessionID: sessionID, taskID: taskID, now: now)
             refreshHub(now: now)
         case let .markTaskDone(taskID):
-            markDone(taskID: taskID)
+            markDone(taskID: taskID, now: now)
             closeCard(reacted: true, now: now)
         case let .queuePrompt(sessionID, text):
             attempt { try promptQueue.enqueue(sessionID: sessionID, taskID: taskID(forSession: sessionID), text: text, now: now) }
@@ -543,7 +688,7 @@ final class FocusCoordinator {
         case .sendQueuedPrompt:
             break
         case let .toggleCriterion(id):
-            attempt { try criteriaService.toggle(id: id) }
+            attempt { try criteriaService.toggle(id: id, now: now) }
             workRevision += 1
         case let .addCriterion(taskID, text):
             attempt { try criteriaService.add(taskID: taskID, text: text, now: now) }
@@ -581,21 +726,13 @@ final class FocusCoordinator {
             presentPendingReturned(now: now)
         case let .startDay(taskIDs):
             startDay(taskIDs: taskIDs, now: now)
-        case let .deferStalled(sessionIDs):
-            for sessionID in sessionIDs {
-                attempt { try history.park(sessionID: sessionID, at: now) }
-            }
-            reloadLiveRecords()
-            syncSessionSpans(latestSessions, now: now)
-            refreshHub(now: now)
-            closeCard(reacted: true, now: now)
         case .dismiss:
             closeCard(reacted: false, now: now)
             presentPendingReturned(now: now)
         }
     }
 
-    private func startTask(taskID: String, now: Date) {
+    private func launchTaskSession(taskID: String, now: Date) {
         guard let task = board.task(id: taskID) else { return closeCard(reacted: false, now: now) }
         attempt { try boardService.moveTask(id: taskID, to: .inProgress, beforeTaskID: nil, now: now) }
         let cwd = task.projectPath ?? cardSessionID.flatMap(sessionCWD) ?? FileManager.default.homeDirectoryForCurrentUser.path
@@ -639,6 +776,7 @@ final class FocusCoordinator {
     }
 
     private func directJump(sessionID: String, now: Date) {
+        lastJumpedSessionID = sessionID
         lastJumpProjectName = projectName(sessionID: sessionID)
         jumpToSession?(sessionID)
         markSessionSeen(sessionID, now: now)
@@ -665,6 +803,7 @@ final class FocusCoordinator {
         pendingBindingSessionIDs.removeAll { $0 == sessionID }
         reload()
         syncSessionSpans(latestSessions, now: now)
+        refreshHub(now: now)
     }
 
     func createTaskForSession(sessionID: String, now: Date = .now) {
@@ -674,6 +813,9 @@ final class FocusCoordinator {
         pendingBindingSessionIDs.removeAll { $0 == sessionID }
         reload()
         syncSessionSpans(latestSessions, now: now)
+        if currentTask == nil, let taskID = taskID(forSession: sessionID) {
+            startTask(taskID: taskID, sessionIDs: [], focusMinutes: nil, now: now)
+        }
     }
 
     func requestBinding(sessionID: String) {
@@ -691,23 +833,771 @@ final class FocusCoordinator {
         reload()
     }
 
-    func moveTask(id: String, to column: BoardColumn, before beforeTaskID: String?) {
+    func moveTask(id: String, to column: BoardColumn, before beforeTaskID: String?, now: Date = .now) {
         attempt { try boardService.moveTask(id: id, to: column, beforeTaskID: beforeTaskID) }
+        if column != .inProgress, focusTaskOverrideID == id {
+            focusTaskOverrideID = nil
+        }
+        if column == .done, let active = activePomodoro, active.taskId == id, !PomodoroClock.isExpired(active, now: now) {
+            attempt { try pomodoroStore.finish(completed: false, now: now) }
+            activePomodoro = nil
+            refreshActiveCycle(now: now)
+            refreshPomodoroSnapshot(now: now)
+        }
         reload()
     }
 
     func updateTask(_ task: FocusTask) {
         attempt { try boardService.updateTask(task) }
+        if task.boardColumn != .inProgress, focusTaskOverrideID == task.id {
+            focusTaskOverrideID = nil
+        }
         reload()
     }
 
-    func deleteTask(id: String) {
-        attempt { try boardService.deleteTask(id: id) }
+    func deleteTask(id: String, now: Date = .now) {
+        let cardTaskID = card?.pomodoroID.flatMap { try? pomodoroStore.pomodoro(id: $0) }?.taskId
+        let pendingTaskID = pendingPomodoroCard?.pomodoroID.flatMap { try? pomodoroStore.pomodoro(id: $0) }?.taskId
+        attempt { try boardService.deleteTask(id: id, now: now) }
+        if activePomodoro?.taskId == id {
+            activePomodoro = nil
+            refreshPomodoroSnapshot(now: now)
+        }
+        if pendingTaskID == id {
+            pendingPomodoroCard = nil
+        }
+        if focusTaskOverrideID == id {
+            focusTaskOverrideID = nil
+        }
+        if pendingStartTaskID == id {
+            pendingStartTaskID = nil
+        }
+        let bindCardForTask = card == .bindToTask(taskID: id)
+        reload()
+        if bindCardForTask {
+            closeCard(reacted: false, now: now)
+            presentPendingReturned(now: now)
+        }
+        if cardTaskID == id {
+            closeCard(reacted: false, now: now)
+            presentPendingReturned(now: now)
+        }
+    }
+
+    func markDone(taskID: String, now: Date = .now) {
+        moveTask(id: taskID, to: .done, before: nil, now: now)
+    }
+
+    func startTask(taskID: String, sessionIDs: [String], focusMinutes: Int?, now: Date = .now) {
+        guard board.task(id: taskID) != nil else { return }
+        handlePomodoroExpiry(now: now)
+        if let active = activePomodoro, active.taskId != taskID {
+            attempt { try pomodoroStore.finish(completed: false, now: now) }
+            activePomodoro = nil
+            refreshActiveCycle(now: now)
+            refreshPomodoroSnapshot(now: now)
+        }
+        moveToInProgressIfNeeded(taskID: taskID, now: now)
+        for sessionID in sessionIDs {
+            attempt { try boardService.bindSession(sessionID: sessionID, toTaskID: taskID, now: now) }
+            pendingBindingSessionIDs.removeAll { $0 == sessionID }
+        }
+        focusTaskOverrideID = taskID
+        focusCleared = false
+        closedTask = nil
+        closedTaskShownAt = nil
+        if pendingStartTaskID == taskID {
+            pendingStartTaskID = nil
+        }
+        reload()
+        if card == .pickTask || card?.bindTaskID != nil {
+            closeCard(reacted: true, now: now)
+        }
+        if let focusMinutes, focusMinutes > 0 {
+            startPomodoro(taskID: taskID, minutes: focusMinutes, now: now)
+        }
+        syncSessionSpans(latestSessions, now: now)
+        syncYouSpan(now: now)
+        refreshHub(now: now)
+    }
+
+    func requestStartTask(taskID: String, now: Date = .now) {
+        guard board.task(id: taskID) != nil else { return }
+        moveToInProgressIfNeeded(taskID: taskID, now: now)
+        reload()
+        pendingStartTaskID = taskID
+    }
+
+    func clearPendingStartTask() {
+        if pendingStartTaskID != nil {
+            pendingStartTaskID = nil
+        }
+    }
+
+    private func moveToInProgressIfNeeded(taskID: String, now: Date) {
+        guard let task = board.task(id: taskID), task.boardColumn != .inProgress else { return }
+        let first = board.tasks(in: .inProgress).first { $0.id != taskID }?.id
+        attempt { try boardService.moveTask(id: taskID, to: .inProgress, beforeTaskID: first, now: now) }
+    }
+
+    func bindableSessions(forTaskID taskID: String) -> [BindableSession] {
+        guard let task = board.task(id: taskID) else { return [] }
+        let rows = latestSessions
+            .filter { !$0.isSessionEnded && self.taskID(forSession: $0.id) != taskID }
+            .map { session -> (row: BindableSession, updatedAt: Date) in
+                let cwd = sessionCWD(session.id)
+                let same = cwd.map { Self.projectPath(task.projectPath, contains: $0) } ?? false
+                let boundTitle = board.task(id: self.taskID(forSession: session.id))?.title
+                let stored = self.record(session.id)
+                let detail = sessionDetail(session.id, prompt: stored?.lastPrompt ?? session.claudeMetadata?.lastUserPrompt, cwd: cwd)
+                let row = BindableSession(
+                    id: session.id,
+                    title: sessionLabels[session.id] ?? session.title,
+                    detail: detail,
+                    projectName: projectName(sessionID: session.id),
+                    boundTaskTitle: boundTitle,
+                    isSameProject: same,
+                    defaultSelected: same && boundTitle == nil
+                )
+                return (row, session.updatedAt)
+            }
+        return rows.sorted { lhs, rhs in
+            if lhs.row.isSameProject != rhs.row.isSameProject { return lhs.row.isSameProject }
+            if lhs.updatedAt != rhs.updatedAt { return lhs.updatedAt > rhs.updatedAt }
+            return lhs.row.id < rhs.row.id
+        }.map(\.row)
+    }
+
+    func pickTaskOptions(now: Date = .now) -> PickTaskOptions {
+        let rows = currentHubRows(now: now)
+        let option = { (task: FocusTask) -> PickTaskOption in
+            let taskRows = rows.filter { $0.taskID == task.id }
+            return PickTaskOption(
+                taskID: task.id,
+                title: task.title,
+                projectName: SessionHistory.projectName(for: task.projectPath),
+                liveSessionCount: taskRows.count,
+                sessionStateText: Self.sessionStateText(rows: taskRows, now: now)
+            )
+        }
+        return PickTaskOptions(inProgress: board.tasks(in: .inProgress).map(option), todo: board.tasks(in: .todo).map(option))
+    }
+
+    nonisolated static func sessionStateText(rows allRows: [HubRow], now: Date) -> String {
+        let rows = allRows.filter { $0.group != .done }
+        guard !rows.isEmpty else { return "нет сессий — добавишь следующим шагом" }
+        let ranked: [(groups: Set<HubGroup>, label: String)] = [
+            ([.waiting], "ждёт"),
+            ([.review, .idle, .unbound], "твой ход"),
+            ([.running], "работает"),
+            ([.parked], "на паузе")
+        ]
+        let count = sessionCountText(rows.count)
+        for rank in ranked {
+            guard let oldest = rows.filter({ rank.groups.contains($0.group) }).map(\.since).min() else { continue }
+            let minutes = max(0, Int(now.timeIntervalSince(oldest) / 60))
+            return "\(count) · \(rank.label) \(minutes) мин"
+        }
+        return count
+    }
+
+    nonisolated static func sessionCountText(_ count: Int) -> String {
+        let mod10 = count % 10
+        let mod100 = count % 100
+        if mod10 == 1 && mod100 != 11 { return "\(count) сессия" }
+        if (2...4).contains(mod10) && !(12...14).contains(mod100) { return "\(count) сессии" }
+        return "\(count) сессий"
+    }
+
+    @discardableResult
+    func takeTask(taskID: String, now: Date = .now) -> TakeTaskResult? {
+        guard board.task(id: taskID) != nil else { return nil }
+        startTask(taskID: taskID, sessionIDs: [], focusMinutes: nil, now: now)
+        if currentHubRows(now: now).contains(where: { $0.taskID == taskID }) {
+            return .focused
+        }
+        present(.bindToTask(taskID: taskID), now: now)
+        return .needsBinding
+    }
+
+    func taskSessionChoices(forTaskID taskID: String) -> [BindableSession] {
+        guard board.task(id: taskID) != nil else { return [] }
+        let bound = latestSessions
+            .filter { !$0.isSessionEnded && self.taskID(forSession: $0.id) == taskID }
+            .sorted { lhs, rhs in
+                if lhs.updatedAt != rhs.updatedAt { return lhs.updatedAt > rhs.updatedAt }
+                return lhs.id < rhs.id
+            }
+            .map { session in
+                let stored = self.record(session.id)
+                let cwd = sessionCWD(session.id)
+                return BindableSession(
+                    id: session.id,
+                    title: sessionLabels[session.id] ?? session.title,
+                    detail: sessionDetail(session.id, prompt: stored?.lastPrompt ?? session.claudeMetadata?.lastUserPrompt, cwd: cwd),
+                    projectName: projectName(sessionID: session.id),
+                    boundTaskTitle: nil,
+                    isSameProject: true,
+                    defaultSelected: true,
+                    isBound: true
+                )
+            }
+        return bound + bindableSessions(forTaskID: taskID)
+    }
+
+    nonisolated static func defaultTaskSessionSelection(_ choices: [BindableSession]) -> Set<String> {
+        Set(choices.filter(\.defaultSelected).map(\.id))
+    }
+
+    nonisolated static func taskSessionChanges(_ choices: [BindableSession], selected: Set<String>) -> (add: [String], remove: [String]) {
+        let add = choices.filter { !$0.isBound && selected.contains($0.id) }.map(\.id)
+        let remove = choices.filter { $0.isBound && !selected.contains($0.id) }.map(\.id)
+        return (add, remove)
+    }
+
+    @discardableResult
+    func openTaskSessions(taskID: String, now: Date = .now) -> Bool {
+        guard board.task(id: taskID) != nil else { return false }
+        if let card, card.priority >= FocusCard.pomodoroEnd(pomodoroID: "").priority { return false }
+        if let card {
+            if case let .returned(sessionID) = card, !pendingReturnedSessionIDs.contains(sessionID) {
+                pendingReturnedSessionIDs.insert(sessionID, at: 0)
+            }
+            closeCard(reacted: false, now: now)
+        }
+        return present(.bindToTask(taskID: taskID), now: now)
+    }
+
+    func applyTaskSessions(taskID: String, selected: Set<String>, now: Date = .now) {
+        guard board.task(id: taskID) != nil else { return }
+        let changes = Self.taskSessionChanges(taskSessionChoices(forTaskID: taskID), selected: selected)
+        for sessionID in changes.add {
+            attempt { try boardService.bindSession(sessionID: sessionID, toTaskID: taskID, now: now) }
+            pendingBindingSessionIDs.removeAll { $0 == sessionID }
+        }
+        for sessionID in changes.remove {
+            attempt { try boardService.bindSession(sessionID: sessionID, toTaskID: nil, now: now) }
+        }
+        reload()
+        syncSessionSpans(latestSessions, now: now)
+        if card?.bindTaskID == taskID {
+            closeCard(reacted: true, now: now)
+        }
+        refreshHub(now: now)
+        presentPendingReturned(now: now)
+    }
+
+    func closeTask(taskID: String, showPicker: Bool, now: Date = .now) {
+        guard let task = board.task(id: taskID) else { return }
+        let wasFocused = currentTask?.id == taskID
+        let cardTaskID = card?.pomodoroID.flatMap { try? pomodoroStore.pomodoro(id: $0) }?.taskId
+        let pendingTaskID = pendingPomodoroCard?.pomodoroID.flatMap { try? pomodoroStore.pomodoro(id: $0) }?.taskId
+        let sessionsCard = card?.bindTaskID == taskID || cardTaskID == taskID
+        if let active = activePomodoro, active.taskId == taskID {
+            attempt { try pomodoroStore.finish(completed: PomodoroClock.isExpired(active, now: now), now: now) }
+            activePomodoro = nil
+            refreshActiveCycle(now: now)
+            refreshPomodoroSnapshot(now: now)
+        }
+        if pendingTaskID == taskID {
+            pendingPomodoroCard = nil
+        }
+        if pendingStartTaskID == taskID {
+            pendingStartTaskID = nil
+        }
+        markDone(taskID: taskID, now: now)
+        if wasFocused {
+            focusCleared = true
+        }
+        closedTask = ClosedTaskNotice(taskID: taskID, title: task.title, wasFocused: wasFocused)
+        closedTaskShownAt = now
+        if sessionsCard {
+            closeCard(reacted: true, now: now)
+        }
+        refreshHub(now: now)
+        if showPicker, !board.tasks(in: .inProgress).isEmpty || !board.tasks(in: .todo).isEmpty {
+            openPickTask(now: now)
+        } else if sessionsCard {
+            presentPendingReturned(now: now)
+        }
+    }
+
+    func reopenClosedTask(now: Date = .now) {
+        guard let notice = closedTask else { return }
+        closedTask = nil
+        closedTaskShownAt = nil
+        guard board.task(id: notice.taskID) != nil else { return }
+        moveToInProgressIfNeeded(taskID: notice.taskID, now: now)
+        if notice.wasFocused {
+            focusTaskOverrideID = notice.taskID
+            focusCleared = false
+        }
+        reload()
+        if card == .pickTask {
+            closeCard(reacted: true, now: now)
+            presentPendingReturned(now: now)
+        }
+        syncYouSpan(now: now)
+        refreshHub(now: now)
+    }
+
+    private func currentHubRows(now: Date) -> [HubRow] {
+        let records = Dictionary(liveRecords.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        return SessionHub.rows(sessions: latestSessions, records: records, board: board, unseenCompleted: unseenCompleted, now: now)
+    }
+
+    func showWaitingOutside() {
+        waitingOutsideExpanded = true
+    }
+
+    func toggleWaitingOutside() {
+        waitingOutsideExpanded.toggle()
+    }
+
+    func deferWaitingOutside(sessionIDs: [String], now: Date = .now) {
+        for sessionID in sessionIDs {
+            attempt { try history.park(sessionID: sessionID, at: now) }
+        }
+        reloadLiveRecords()
+        syncSessionSpans(latestSessions, now: now)
+        refreshHub(now: now)
+    }
+
+    func offerTaskChoiceOnLaunch(now: Date = .now) {
+        guard pomodoro == nil else { return }
+        focusCleared = true
+        refreshHub(now: now)
+        guard card == nil else { return }
+        guard !board.tasks(in: .inProgress).isEmpty || !board.tasks(in: .todo).isEmpty else { return }
+        presentCard?()
+    }
+
+    func bindNewSession(sessionID: String, taskID: String, now: Date = .now) {
+        bind(sessionID: sessionID, taskID: taskID, now: now)
+        if currentTask == nil {
+            startTask(taskID: taskID, sessionIDs: [], focusMinutes: nil, now: now)
+        }
+    }
+
+    func opensIslandOnCompletion(sessionID: String) -> Bool {
+        guard let task = currentTask else { return false }
+        return taskID(forSession: sessionID) == task.id
+    }
+
+    @discardableResult
+    func openPickTask(now: Date = .now) -> PickTaskOpenResult {
+        guard !board.tasks(in: .todo).isEmpty || !board.tasks(in: .inProgress).isEmpty else {
+            NotificationCenter.default.post(name: .focusOpenBoard, object: nil, userInfo: ["tab": "board"])
+            return .openedBoard
+        }
+        if let card, card.priority >= FocusCard.pomodoroEnd(pomodoroID: "").priority { return .blocked }
+        if let card {
+            if case let .returned(sessionID) = card, !pendingReturnedSessionIDs.contains(sessionID) {
+                pendingReturnedSessionIDs.insert(sessionID, at: 0)
+            }
+            closeCard(reacted: false, now: now)
+        }
+        return present(.pickTask, now: now) ? .presented : .blocked
+    }
+
+    @discardableResult
+    func startPomodoro(taskID: String?, minutes: Int, now: Date = .now) -> Bool {
+        guard minutes > 0 else { return false }
+        let clamped = min(FocusSettings.pomodoroFocusRange.upperBound, max(FocusSettings.pomodoroFocusRange.lowerBound, minutes))
+        return beginPomodoro(taskID: taskID, phase: .focus, seconds: clamped * 60, now: now)
+    }
+
+    func pausePomodoro(now: Date = .now) {
+        handlePomodoroExpiry(now: now)
+        guard activePomodoro != nil else { return }
+        do {
+            activePomodoro = try pomodoroStore.pause(now: now)
+        } catch {
+            logger.error("pomodoro pause failed: \(String(describing: error), privacy: .public)")
+        }
+        refreshPomodoroSnapshot(now: now)
+    }
+
+    func resumePomodoro(now: Date = .now) {
+        handlePomodoroExpiry(now: now)
+        guard activePomodoro != nil else { return }
+        do {
+            activePomodoro = try pomodoroStore.resume(now: now)
+        } catch {
+            logger.error("pomodoro resume failed: \(String(describing: error), privacy: .public)")
+        }
+        refreshPomodoroSnapshot(now: now)
+    }
+
+    func stopPomodoro(now: Date = .now) {
+        handlePomodoroExpiry(now: now)
+        guard activePomodoro != nil else { return }
+        attempt { try pomodoroStore.finish(completed: false, now: now) }
+        activePomodoro = nil
+        refreshPomodoroSnapshot(now: now)
+    }
+
+    func breakCountdownRemaining(now: Date = .now) -> Int? {
+        guard let endsAt = breakCountdownEndsAt else { return nil }
+        return max(0, Int(endsAt.timeIntervalSince(now).rounded(.up)))
+    }
+
+    func chooseBreakMinutes(_ minutes: Int) {
+        breakMinutesChoice = min(FocusSettings.pomodoroBreakRange.upperBound, max(FocusSettings.pomodoroBreakRange.lowerBound, minutes))
+    }
+
+    func cancelBreakCountdown() {
+        breakCountdownEndsAt = nil
+        breakCountdownLeft = nil
+    }
+
+    func finishBreakEarly(now: Date = .now) {
+        guard let active = activePomodoro, active.phase == .break else { return }
+        attempt { try pomodoroStore.finish(completed: false, now: now) }
+        activePomodoro = nil
+        refreshPomodoroSnapshot(now: now)
+        pendingPomodoroCard = .breakEnd(pomodoroID: active.id)
+        presentPendingPomodoroCard(now: now)
+    }
+
+    private func startBreakCountdownIfFresh(pomodoroID: String, now: Date) {
+        breakCountdownEndsAt = nil
+        guard settings.autoBreakEnabled,
+              let ended = (try? pomodoroStore.pomodoro(id: pomodoroID))?.endedAt,
+              now.timeIntervalSince(ended) < Self.breakCountdownFreshness else { return }
+        breakCountdownEndsAt = now.addingTimeInterval(Self.breakCountdownSeconds)
+        breakCountdownLeft = breakCountdownRemaining(now: now)
+        if settings.breakSoundEnabled {
+            playSound(Self.breakSoundName)
+        }
+    }
+
+    private func runBreakCountdown(now: Date) {
+        let left = breakCountdownRemaining(now: now)
+        if breakCountdownLeft != left {
+            breakCountdownLeft = left
+        }
+        guard let endsAt = breakCountdownEndsAt, now >= endsAt else { return }
+        guard case .pomodoroEnd = card else {
+            breakCountdownEndsAt = nil
+            return
+        }
+        startBreak(nextStep: nil, minutes: breakMinutesChoice, now: now)
+    }
+
+    func startBreak(nextStep: String?, minutes chosen: Int? = nil, now: Date = .now) {
+        let ended = cardPomodoro()
+        let taskID = ended?.taskId ?? currentTask?.id
+        saveNextStep(nextStep, taskID: taskID, now: now)
+        closePomodoroCard(now: now)
+        let minutes = min(FocusSettings.pomodoroBreakRange.upperBound, max(FocusSettings.pomodoroBreakRange.lowerBound, chosen ?? settings.pomodoroBreakMinutes))
+        beginPomodoro(taskID: taskID, phase: .break, seconds: minutes * 60, now: now)
+    }
+
+    func continueFocus(nextStep: String?, minutes chosen: Int? = nil, now: Date = .now) {
+        let ended = cardPomodoro()
+        let taskID = ended?.taskId ?? currentTask?.id
+        saveNextStep(nextStep, taskID: taskID, now: now)
+        closePomodoroCard(now: now)
+        startPomodoro(taskID: taskID, minutes: PomodoroFormat.clampFocus(chosen ?? nextFocusMinutes(after: ended)), now: now)
+    }
+
+    func endForToday(nextStep: String?, now: Date = .now) {
+        let taskID = cardPomodoro()?.taskId ?? currentTask?.id
+        saveNextStep(nextStep, taskID: taskID, now: now)
+        closePomodoroCard(now: now)
+        presentPendingReturned(now: now)
+    }
+
+    func saveNextStepDraft(_ text: String?, pomodoroID: String, now: Date = .now) {
+        guard let item = try? pomodoroStore.pomodoro(id: pomodoroID),
+              let trimmed = text?.trimmingCharacters(in: .whitespacesAndNewlines), !trimmed.isEmpty,
+              board.task(id: item.taskId)?.note != trimmed else { return }
+        saveNextStep(trimmed, taskID: item.taskId, now: now)
+    }
+
+    func closePickTask(now: Date = .now) {
+        guard card == .pickTask else { return }
+        closeCard(reacted: false, now: now)
+        presentPendingReturned(now: now)
+    }
+
+    func pomodoroCount(day: Date) -> Int {
+        (try? pomodoroStore.completedFocusCount(day: day)) ?? 0
+    }
+
+    func extendBreak(minutes: Int = 5, now: Date = .now) {
+        guard minutes > 0 else { return }
+        handlePomodoroExpiry(now: now)
+        if let active = activePomodoro, active.phase == .break {
+            do {
+                activePomodoro = try pomodoroStore.extendActive(bySeconds: minutes * 60)
+            } catch {
+                logger.error("pomodoro extend failed: \(String(describing: error), privacy: .public)")
+            }
+            refreshPomodoroSnapshot(now: now)
+            return
+        }
+        guard case .breakEnd = card else { return }
+        let taskID = cardPomodoro()?.taskId ?? currentTask?.id
+        closePomodoroCard(now: now)
+        beginPomodoro(taskID: taskID, phase: .break, seconds: minutes * 60, now: now)
+    }
+
+    func endBreakWithoutTimer(now: Date = .now) {
+        if case .breakEnd = card {
+            closePomodoroCard(now: now)
+        }
+        if activePomodoro?.phase == .break {
+            attempt { try pomodoroStore.finish(completed: false, now: now) }
+            activePomodoro = nil
+            refreshPomodoroSnapshot(now: now)
+        }
+        presentPendingReturned(now: now)
+    }
+
+    func resumeAfterBreak(minutes chosen: Int? = nil, now: Date = .now) {
+        let taskID = cardPomodoro()?.taskId ?? activePomodoro?.taskId ?? currentTask?.id
+        closePomodoroCard(now: now)
+        if activePomodoro?.phase == .break {
+            attempt { try pomodoroStore.finish(completed: false, now: now) }
+            activePomodoro = nil
+        }
+        startPomodoro(taskID: taskID, minutes: PomodoroFormat.clampFocus(chosen ?? settings.pomodoroFocusMinutes), now: now)
+        guard let taskID else { return }
+        let bound = latestSessions.filter { !$0.isSessionEnded && self.taskID(forSession: $0.id) == taskID }
+        let waiting = bound.filter { $0.phase == .waitingForApproval || $0.phase == .waitingForAnswer }
+        let target = (waiting.isEmpty ? bound : waiting).max { $0.updatedAt < $1.updatedAt }
+        if let target {
+            requestJump(sessionID: target.id, now: now)
+        }
+    }
+
+    func pomodoroSummary(pomodoroID: String, now: Date = .now) -> PomodoroSummary? {
+        guard let item = try? pomodoroStore.pomodoro(id: pomodoroID) else { return nil }
+        let end = max(item.startedAt, item.endedAt ?? now)
+        let report = intervalReport(taskID: item.taskId, from: item.startedAt, to: end)
+        let completedBefore = item.taskId.flatMap { try? pomodoroStore.completedFocusCount(taskID: $0, day: item.startedAt, startedBefore: item.startedAt) } ?? 0
+        return PomodoroSummary(
+            pomodoroID: item.id,
+            taskID: item.taskId,
+            taskTitle: board.task(id: item.taskId)?.title ?? "",
+            plannedMinutes: item.plannedSeconds / 60,
+            nextFocusMinutes: nextFocusMinutes(after: item),
+            cycleIndex: PomodoroClock.cycleIndex(completedToday: completedBefore, cycle: settings.pomodoroCycle),
+            cycle: settings.pomodoroCycle,
+            youInTaskSeconds: report?.youSeconds ?? 0,
+            claudeSeconds: report?.claudeSeconds ?? 0,
+            distractionSeconds: report?.distractionSeconds ?? 0,
+            distractionCount: report?.distractionCount ?? 0,
+            returnedCount: report?.returnedCount ?? 0,
+            finishedSessionTitles: finishedSessionTitles(taskID: item.taskId, from: item.startedAt, to: end),
+            checkedCriteria: checkedCriteria(taskID: item.taskId, from: item.startedAt, to: end)
+        )
+    }
+
+    func breakSummary(pomodoroID: String, now: Date = .now) -> BreakSummary? {
+        guard let item = try? pomodoroStore.pomodoro(id: pomodoroID) else { return nil }
+        let end = max(item.startedAt, item.endedAt ?? now)
+        let task = board.task(id: item.taskId)
+        return BreakSummary(
+            pomodoroID: item.id,
+            taskID: item.taskId,
+            taskTitle: task?.title ?? "",
+            note: task?.note,
+            plannedMinutes: item.plannedSeconds / 60,
+            finishedSessionTitles: finishedSessionTitles(taskID: item.taskId, from: item.startedAt, to: end)
+        )
+    }
+
+    private func intervalReport(taskID: String?, from: Date, to: Date) -> DayReport? {
+        do {
+            let spans = try activityLog.spans(from: from, to: to).filter { taskID != nil && $0.taskId == taskID }
+            let episodes = try distractionLog.episodes(since: from.addingTimeInterval(-86_400)).filter { $0.startedAt < to }
+            return ReportBuilder.day(spans: spans, episodes: episodes, tasks: board.tasks, dayStart: from, dayEnd: to)
+        } catch {
+            logger.error("pomodoro report failed: \(String(describing: error), privacy: .public)")
+            return nil
+        }
+    }
+
+    private func finishedSessionTitles(taskID: String?, from: Date, to: Date) -> [String] {
+        guard let taskID else { return [] }
+        var seen: Set<String> = []
+        var titles: [String] = []
+        for entry in finishedTurnLog where entry.at >= from && entry.at <= to && self.taskID(forSession: entry.sessionID) == taskID {
+            guard seen.insert(entry.sessionID).inserted else { continue }
+            titles.append(session(entry.sessionID)?.title ?? record(entry.sessionID)?.title ?? entry.sessionID)
+        }
+        return titles
+    }
+
+    func nextFocusMinutes(after ended: Pomodoro?) -> Int {
+        let minutes = ended.flatMap { $0.phase == .focus ? $0.plannedSeconds / 60 : nil } ?? settings.pomodoroFocusMinutes
+        return min(FocusSettings.pomodoroFocusRange.upperBound, max(FocusSettings.pomodoroFocusRange.lowerBound, minutes))
+    }
+
+    private func checkedCriteria(taskID: String?, from: Date, to: Date) -> [String] {
+        guard let taskID else { return [] }
+        return ((try? criteriaService.criteria(taskID: taskID)) ?? [])
+            .filter { criterion in
+                guard criterion.done, let checkedAt = criterion.checkedAt else { return false }
+                return checkedAt >= from && checkedAt <= to
+            }
+            .map(\.text)
+    }
+
+    private func cardPomodoro() -> Pomodoro? {
+        card?.pomodoroID.flatMap { try? pomodoroStore.pomodoro(id: $0) }
+    }
+
+    private func closePomodoroCard(now: Date) {
+        if card?.pomodoroID != nil {
+            closeCard(reacted: true, now: now)
+        }
+    }
+
+    private func saveNextStep(_ text: String?, taskID: String?, now: Date) {
+        guard let trimmed = text?.trimmingCharacters(in: .whitespacesAndNewlines), !trimmed.isEmpty,
+              var task = board.task(id: taskID) else { return }
+        task.note = trimmed
+        attempt { try boardService.updateTask(task, now: now) }
         reload()
     }
 
-    func markDone(taskID: String) {
-        moveTask(id: taskID, to: .done, before: nil)
+    @discardableResult
+    private func beginPomodoro(taskID: String?, phase: PomodoroPhase, seconds: Int, now: Date) -> Bool {
+        guard seconds > 0 else { return false }
+        attempt { try pomodoroStore.recoverExpired(now: now) }
+        if card?.pomodoroID != nil {
+            closeCard(reacted: false, now: now)
+        }
+        pendingPomodoroCard = nil
+        do {
+            activePomodoro = try pomodoroStore.start(taskID: taskID, phase: phase, plannedSeconds: seconds, now: now)
+        } catch {
+            logger.error("pomodoro start failed: \(String(describing: error), privacy: .public)")
+            activePomodoro = nil
+            refreshPomodoroSnapshot(now: now)
+            return false
+        }
+        refreshActiveCycle(now: now)
+        refreshPomodoroCount(now: now)
+        refreshPomodoroSnapshot(now: now)
+        if phase == .break {
+            enterBreak(now: now)
+        }
+        syncYouSpan(now: now)
+        return true
+    }
+
+    private func enterBreak(now: Date) {
+        if distractionTracker.currentEpisode != nil {
+            let sample = FrontmostSample(bundleID: frontmostBundleID ?? "", url: nil, at: now)
+            let events = distractionTracker.observe(sample, anySessionRunning: false, stopList: settings.stopList)
+            handleDistractionEvents(events, at: now)
+            refreshDistractionTarget()
+        }
+        switch card {
+        case .nextAction, .nudge:
+            closeCard(reacted: false, now: now)
+            presentPendingReturned(now: now)
+        default:
+            break
+        }
+        _ = turnTracker.takeDueSessions(now: now)
+    }
+
+    private func restorePomodoro(now: Date) {
+        do {
+            if let recovered = try pomodoroStore.recoverExpired(now: now), let endedAt = recovered.endedAt,
+               Calendar.current.isDate(endedAt, inSameDayAs: now), now.timeIntervalSince(endedAt) <= Self.recoveredEndCardWindow {
+                pendingPomodoroCard = Self.endCard(for: recovered)
+            }
+            activePomodoro = try pomodoroStore.active()
+        } catch {
+            logger.error("pomodoro restore failed: \(String(describing: error), privacy: .public)")
+        }
+        refreshActiveCycle(now: now)
+        refreshPomodoroCount(now: now)
+        refreshPomodoroSnapshot(now: now)
+    }
+
+    private func handlePomodoroExpiry(now: Date) {
+        guard let active = activePomodoro, PomodoroClock.isExpired(active, now: now) else { return }
+        var finished = active
+        do {
+            if let recovered = try pomodoroStore.recoverExpired(now: now) {
+                finished = recovered
+            }
+        } catch {
+            logger.error("pomodoro finish failed: \(String(describing: error), privacy: .public)")
+        }
+        activePomodoro = nil
+        refreshPomodoroSnapshot(now: now)
+        refreshTodaySummary(now: now, force: true)
+        pendingPomodoroCard = Self.endCard(for: finished)
+        presentPendingPomodoroCard(now: now)
+    }
+
+    private static func endCard(for pomodoro: Pomodoro) -> FocusCard {
+        pomodoro.phase == .focus ? .pomodoroEnd(pomodoroID: pomodoro.id) : .breakEnd(pomodoroID: pomodoro.id)
+    }
+
+    private func presentPendingPomodoroCard(now: Date) {
+        guard started, let pending = pendingPomodoroCard else { return }
+        if card == pending {
+            pendingPomodoroCard = nil
+            return
+        }
+        if present(pending, now: now) {
+            pendingPomodoroCard = nil
+        }
+    }
+
+    private func refreshActiveCycle(now: Date) {
+        guard let active = activePomodoro else {
+            activeCycleCompleted = 0
+            return
+        }
+        let count: Int
+        if let taskID = active.taskId {
+            count = (try? pomodoroStore.completedFocusCount(taskID: taskID, day: active.startedAt, startedBefore: active.startedAt)) ?? 0
+        } else {
+            count = (try? pomodoroStore.completedFocusCount(day: active.startedAt)) ?? 0
+        }
+        activeCycleCompleted = active.phase == .focus ? count : max(0, count - 1)
+    }
+
+    private func refreshPomodoroCount(now: Date) {
+        let count = (try? pomodoroStore.completedFocusCount(day: now)) ?? 0
+        if count != pomodoroCountToday {
+            pomodoroCountToday = count
+        }
+    }
+
+    private func refreshPomodoroSnapshot(now: Date) {
+        guard let active = activePomodoro else {
+            if pomodoro != nil { pomodoro = nil }
+            return
+        }
+        let remaining = Int(PomodoroClock.remaining(active, now: now).rounded(.up))
+        let progress = active.plannedSeconds > 0 ? min(1, max(0, 1 - Double(remaining) / Double(active.plannedSeconds))) : 1
+        let snapshot = PomodoroSnapshot(
+            id: active.id,
+            taskID: active.taskId,
+            taskTitle: board.task(id: active.taskId)?.title,
+            phase: active.phase,
+            plannedSeconds: active.plannedSeconds,
+            remainingSeconds: remaining,
+            progress: progress,
+            isPaused: active.pausedAt != nil,
+            cycleIndex: PomodoroClock.cycleIndex(completedToday: activeCycleCompleted, cycle: settings.pomodoroCycle),
+            cycle: settings.pomodoroCycle
+        )
+        if snapshot != pomodoro {
+            pomodoro = snapshot
+        }
     }
 
     func markSessionSeen(_ sessionID: String, now: Date = .now) {
@@ -731,17 +1621,22 @@ final class FocusCoordinator {
         syncYouSpan(now: sample.at)
         presentDayStartIfDue(now: sample.at)
         guard settings.distractionEnabled else { return }
-        for event in distractionTracker.observe(sample, anySessionRunning: hasRunningSession, stopList: settings.stopList) {
+        let events = distractionTracker.observe(sample, anySessionRunning: hasRunningSession && !isOnBreak, stopList: settings.stopList)
+        handleDistractionEvents(events, at: sample.at)
+    }
+
+    private func handleDistractionEvents(_ events: [DistractionEvent], at date: Date) {
+        for event in events {
             switch event {
             case .nudge:
-                if present(.nudge, now: sample.at), settings.nudgeSoundEnabled {
+                if present(.nudge, now: date), settings.nudgeSoundEnabled {
                     NSSound.beep()
                 }
             case let .episodeEnded(episode):
                 attempt { try distractionLog.save(episode) }
                 if card == .nudge {
                     card = nil
-                    presentPendingReturned(now: sample.at)
+                    presentPendingReturned(now: date)
                 }
             }
         }
@@ -849,7 +1744,53 @@ final class FocusCoordinator {
     }
 
     func sessionTitle(_ sessionID: String) -> String {
-        latestSessions.first { $0.id == sessionID }?.title ?? sessionID
+        sessionLabels[sessionID] ?? latestSessions.first { $0.id == sessionID }?.title ?? sessionID
+    }
+
+    func sessionLabel(_ sessionID: String) -> String? {
+        sessionLabels[sessionID]
+    }
+
+    func refreshSessionLabels(now: Date = .now) {
+        guard let lookup = lookupSessionLabels, !labelLookupInFlight else { return }
+        let ids = Set(latestSessions.filter { session in
+            guard session.jumpTarget.map({ ClaudeDesktopSessionLocator.isClaudeDesktop(terminalApp: $0.terminalApp) }) ?? false else { return false }
+            return Self.labelLookupDue(lastLookup: labelLookedUpAt[session.id], hasLabel: sessionLabels[session.id] != nil, now: now)
+        }.map(\.id))
+        guard !ids.isEmpty else { return }
+        labelLookupInFlight = true
+        Task { @MainActor [weak self] in
+            let found = await lookup(ids)
+            guard let self else { return }
+            for id in ids { self.labelLookedUpAt[id] = now }
+            self.labelLookupInFlight = false
+            for (id, label) in found {
+                if let title = label.title, self.sessionLabels[id] != title { self.sessionLabels[id] = title }
+                if let status = label.status, self.sessionStatuses[id] != status { self.sessionStatuses[id] = status }
+            }
+        }
+    }
+
+    nonisolated static func labelLookupDue(lastLookup: Date?, hasLabel: Bool, now: Date) -> Bool {
+        guard let lastLookup else { return true }
+        let age = now.timeIntervalSince(lastLookup)
+        return age >= (hasLabel ? labelRefreshSeconds : labelRetrySeconds)
+    }
+
+    nonisolated static func promptPreview(_ prompt: String?) -> String? {
+        guard var text = prompt else { return nil }
+        text = text.replacingOccurrences(of: #"<([A-Za-z][\w-]*)\b[^>]*>[\s\S]*?</\1>"#, with: " ", options: .regularExpression)
+        text = text.replacingOccurrences(of: #"<[A-Za-z][\w-]*\b[^>]*/?>"#, with: " ", options: .regularExpression)
+        text = text.replacingOccurrences(of: #"\[Image[^\]]*\]"#, with: " ", options: .regularExpression)
+        let lines = text.components(separatedBy: .newlines).filter { !$0.hasPrefix("Base directory for this skill") }
+        let cleaned = lines.joined(separator: " ")
+            .replacingOccurrences(of: #"\s+"#, with: " ", options: .regularExpression)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        return cleaned.isEmpty ? nil : cleaned
+    }
+
+    func sessionDetail(_ sessionID: String, prompt: String?, cwd: String?) -> String {
+        sessionStatuses[sessionID] ?? Self.promptPreview(prompt) ?? cwd ?? ""
     }
 
     func session(_ id: String) -> AgentSession? {
@@ -936,7 +1877,7 @@ final class FocusCoordinator {
     }
 
     func openDayStart(now: Date = .now) {
-        if let card, card != .onboarding, card != .nudge {
+        if let card, card.priority < FocusCard.pomodoroEnd(pomodoroID: "").priority {
             if case let .returned(sessionID) = card, !pendingReturnedSessionIDs.contains(sessionID) {
                 pendingReturnedSessionIDs.insert(sessionID, at: 0)
             }
@@ -1079,7 +2020,7 @@ final class FocusCoordinator {
     }
 
     private func evaluateFreeSlot(rows: [HubRow], now: Date) {
-        let active = rows.filter { $0.group != .parked }.count
+        let active = rows.filter { !$0.group.isSettled }.count
         if active >= settings.maxParallelSessions {
             slotArmed = true
             return
@@ -1093,14 +2034,6 @@ final class FocusCoordinator {
         slotArmed = false
         toast = Self.slotToast(projectName: parked.projectName ?? parked.title)
         toastShownAt = now
-    }
-
-    private func presentStalledIfNeeded(now: Date) {
-        let stalled = StalledPolicy.stalled(rows: hubRows, reminderMinutes: settings.stalledReminderMinutes, now: now)
-        guard !stalled.isEmpty else { return }
-        if let shownAt = lastStalledShownAt, now.timeIntervalSince(shownAt) < Self.stalledCardInterval { return }
-        guard present(.stalled(sessionIDs: stalled.map(\.id)), now: now) else { return }
-        lastStalledShownAt = now
     }
 
     private func presentDayStartIfDue(now: Date) {
@@ -1155,7 +2088,7 @@ final class FocusCoordinator {
     }
 
     private var parkedSessionIDs: Set<String> {
-        Set(liveRecords.filter { $0.parkedAt != nil }.map(\.id))
+        Set(liveRecords.filter { $0.parkedAt != nil || $0.doneAt != nil }.map(\.id))
     }
 
     private func projectName(sessionID: String) -> String? {
@@ -1184,13 +2117,22 @@ final class FocusCoordinator {
 
     @discardableResult
     private func present(_ new: FocusCard, now: Date, showsOverlay: Bool = true) -> Bool {
-        guard canPresent(new) else { return false }
+        guard canPresent(new) else {
+            queueBehindPomodoroCard(new)
+            return false
+        }
         if case let .returned(displaced) = card, card != new, !pendingReturnedSessionIDs.contains(displaced) {
             pendingReturnedSessionIDs.insert(displaced, at: 0)
+        }
+        if let displaced = card, displaced.pomodoroID != nil, displaced != new, new.pomodoroID == nil, pendingPomodoroCard == nil {
+            pendingPomodoroCard = displaced
         }
         card = new
         if new == .onboarding {
             defaults.set(true, forKey: Self.onboardingPresentedKey)
+        }
+        if case let .pomodoroEnd(pomodoroID) = new {
+            startBreakCountdownIfFresh(pomodoroID: pomodoroID, now: now)
         }
         if new == .nudge {
             nudgeSessionIDState = nudgeSessionID()
@@ -1211,6 +2153,35 @@ final class FocusCoordinator {
             presentCard?()
         }
         return true
+    }
+
+    private func queueBehindPomodoroCard(_ new: FocusCard) {
+        guard card?.pomodoroID != nil else { return }
+        switch new {
+        case .overload, .dayStart:
+            queuedCards.removeAll { Self.sameKind($0, new) }
+            queuedCards.append(new)
+        default:
+            break
+        }
+    }
+
+    private static func sameKind(_ lhs: FocusCard, _ rhs: FocusCard) -> Bool {
+        switch (lhs, rhs) {
+        case (.overload, .overload), (.dayStart, .dayStart): true
+        default: false
+        }
+    }
+
+    private func presentQueuedCards(now: Date) {
+        guard !queuedCards.isEmpty, card == nil else { return }
+        queuedCards.removeAll { queued in
+            guard case let .overload(sessionID) = queued else { return false }
+            return !hubRows.contains { $0.id == sessionID } || OverloadPolicy.evaluate(rows: hubRows, limit: settings.maxParallelSessions) == nil
+        }
+        guard let next = queuedCards.max(by: { $0.priority < $1.priority }) else { return }
+        queuedCards.removeAll { $0 == next }
+        present(next, now: now)
     }
 
     private func presentNextAction(for triggering: String, now: Date) -> Bool {
@@ -1256,8 +2227,7 @@ final class FocusCoordinator {
     }
 
     private func refreshHub(now: Date) {
-        let records = Dictionary(liveRecords.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
-        let rows = SessionHub.rows(sessions: latestSessions, records: records, board: board, unseenCompleted: unseenCompleted, now: now)
+        let rows = currentHubRows(now: now)
         if rows != hubRows {
             hubRows = rows
         }
@@ -1272,16 +2242,13 @@ final class FocusCoordinator {
         if minutes != focusElapsedMinutes {
             focusElapsedMinutes = minutes
         }
+        let outside = currentTask.map { task in
+            StalledPolicy.stalled(rows: rows, reminderMinutes: settings.stalledReminderMinutes, now: now).filter { $0.taskID != task.id }
+        } ?? []
+        if outside != waitingOutside {
+            waitingOutside = outside
+        }
         evaluateFreeSlot(rows: rows, now: now)
-        closeResolvedStalled(now: now)
-    }
-
-    private func closeResolvedStalled(now: Date) {
-        guard case let .stalled(ids) = card else { return }
-        let stalled = Set(StalledPolicy.stalled(rows: hubRows, reminderMinutes: settings.stalledReminderMinutes, now: now).map(\.id))
-        guard !ids.contains(where: { stalled.contains($0) }) else { return }
-        closeCard(reacted: false, now: now)
-        presentPendingReturned(now: now)
     }
 
     private func markCardReacted(now: Date) {
@@ -1296,6 +2263,10 @@ final class FocusCoordinator {
         }
         if case let .returned(sessionID) = card {
             deferredReturnedSessionIDs.remove(sessionID)
+        }
+        if case .pomodoroEnd = card {
+            breakCountdownEndsAt = nil
+            breakMinutesChoice = nil
         }
         card = nil
         nextActionShownAt = nil
@@ -1379,4 +2350,98 @@ final class FocusCoordinator {
 struct TodaySummary: Equatable, Sendable {
     let focusSeconds: TimeInterval
     let distractionSeconds: TimeInterval
+    var pomodoroCount: Int = 0
+}
+
+struct PomodoroSnapshot: Equatable, Sendable {
+    let id: String
+    let taskID: String?
+    let taskTitle: String?
+    let phase: PomodoroPhase
+    let plannedSeconds: Int
+    let remainingSeconds: Int
+    let progress: Double
+    let isPaused: Bool
+    let cycleIndex: Int
+    let cycle: Int
+}
+
+struct BindableSession: Equatable, Identifiable, Sendable {
+    let id: String
+    let title: String
+    let detail: String
+    let projectName: String?
+    let boundTaskTitle: String?
+    let isSameProject: Bool
+    let defaultSelected: Bool
+    var isBound = false
+}
+
+struct DoneSessionNotice: Equatable, Sendable {
+    let sessionID: String
+    let title: String
+}
+
+struct SessionLabel: Equatable, Sendable {
+    var title: String?
+    var status: String?
+}
+
+struct ClosedTaskNotice: Equatable, Sendable {
+    let taskID: String
+    let title: String
+    var wasFocused = true
+}
+
+struct PomodoroSummary: Equatable, Sendable {
+    let pomodoroID: String
+    let taskID: String?
+    let taskTitle: String
+    let plannedMinutes: Int
+    let nextFocusMinutes: Int
+    let cycleIndex: Int
+    let cycle: Int
+    let youInTaskSeconds: TimeInterval
+    let claudeSeconds: TimeInterval
+    let distractionSeconds: TimeInterval
+    let distractionCount: Int
+    let returnedCount: Int
+    let finishedSessionTitles: [String]
+    let checkedCriteria: [String]
+}
+
+struct BreakSummary: Equatable, Sendable {
+    let pomodoroID: String
+    let taskID: String?
+    let taskTitle: String
+    let note: String?
+    let plannedMinutes: Int
+    let finishedSessionTitles: [String]
+}
+
+enum PickTaskOpenResult: Equatable, Sendable {
+    case presented
+    case openedBoard
+    case blocked
+}
+
+struct PickTaskOption: Equatable, Identifiable, Sendable {
+    let taskID: String
+    let title: String
+    let projectName: String?
+    let liveSessionCount: Int
+    let sessionStateText: String
+
+    var id: String { taskID }
+    var hasLiveSessions: Bool { liveSessionCount > 0 }
+}
+
+struct PickTaskOptions: Equatable, Sendable {
+    let inProgress: [PickTaskOption]
+    let todo: [PickTaskOption]
+}
+
+enum TakeTaskResult: Equatable, Sendable {
+    case focused
+    case needsBinding
 }

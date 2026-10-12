@@ -77,6 +77,16 @@ struct BoardRootView: View {
         .background(FocusStyle.windowBackground)
         .frame(minWidth: 900, minHeight: 520)
         .preferredColorScheme(.dark)
+        .sheet(item: startTaskBinding) { item in
+            StartTaskSheet(focus: focus, taskID: item.id).id(item.id)
+        }
+    }
+
+    private var startTaskBinding: Binding<StartTaskItem?> {
+        Binding(
+            get: { focus.pendingStartTaskID.map { StartTaskItem(id: $0) } },
+            set: { if $0 == nil { focus.clearPendingStartTask() } }
+        )
     }
 
     private var toolbar: some View {
@@ -178,6 +188,7 @@ struct BoardView: View {
     var projectFilter: String?
     var showsArchive: Bool
     @State private var editingTask: FocusTask?
+    @State private var pendingStartAfterEdit: String?
 
     var body: some View {
         HStack(alignment: .top, spacing: 14) {
@@ -191,8 +202,18 @@ struct BoardView: View {
             }
         }
         .padding(16)
-        .sheet(item: $editingTask) { task in
-            TaskDetailView(focus: focus, task: task)
+        .sheet(item: $editingTask, onDismiss: {
+            if let id = pendingStartAfterEdit {
+                pendingStartAfterEdit = nil
+                focus.requestStartTask(taskID: id)
+            }
+        }) { task in
+            TaskDetailView(focus: focus, task: task, onRequestStart: { pendingStartAfterEdit = $0 })
+        }
+        .onChange(of: focus.pendingStartTaskID) { _, pending in
+            if pending != nil, editingTask != nil {
+                editingTask = nil
+            }
         }
     }
 
@@ -270,7 +291,7 @@ struct BoardColumnView: View {
                             .draggable(task.id)
                             .dropDestination(for: String.self) { ids, _ in
                                 guard let id = ids.first, id != task.id else { return false }
-                                focus.moveTask(id: id, to: column, before: task.id)
+                                drop(id: id, before: task.id)
                                 return true
                             }
                     }
@@ -299,9 +320,17 @@ struct BoardColumnView: View {
         .overlay(RoundedRectangle(cornerRadius: 12).stroke(FocusStyle.hairline.opacity(0.6), lineWidth: 1))
         .dropDestination(for: String.self) { ids, _ in
             guard let id = ids.first else { return false }
-            focus.moveTask(id: id, to: column, before: nil)
+            drop(id: id, before: nil)
             return true
         } isTargeted: { isTargeted = $0 }
+    }
+
+    private func drop(id: String, before beforeID: String?) {
+        let previous = focus.board.task(id: id)?.boardColumn
+        focus.moveTask(id: id, to: column, before: beforeID)
+        if PomodoroFormat.shouldRequestStart(from: previous, to: column) {
+            focus.requestStartTask(taskID: id)
+        }
     }
 }
 
@@ -413,7 +442,7 @@ struct TaskCardView: View {
         case .running: FocusStyle.working
         case .waiting: FocusStyle.waiting
         case .review: FocusStyle.done
-        case .idle, .unbound, .parked: FocusStyle.parkedDot
+        case .idle, .unbound, .parked, .done: FocusStyle.parkedDot
         }
     }
 

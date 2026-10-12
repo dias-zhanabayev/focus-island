@@ -248,7 +248,7 @@ struct IslandPanelView: View {
         }
         .onTapGesture {
             if model.notchStatus != .opened {
-                model.notchOpen(reason: .click)
+                model.openIslandFromClosedPillClick()
             }
         }
     }
@@ -481,9 +481,6 @@ struct IslandPanelView: View {
         TimelineView(.periodic(from: .now, by: 30)) { context in
             let hasSessions = !model.islandListSessions.isEmpty
             VStack(spacing: 0) {
-                if hasSessions {
-                    sessionPanelHeader(referenceDate: context.date)
-                }
 
                 ScrollView(.vertical) {
                     VStack(spacing: 0) {
@@ -529,8 +526,12 @@ struct IslandPanelView: View {
                 onReply: TerminalTextSender.canReply(to: session, enabled: model.completionReplyEnabled)
                     ? { model.replyToSession(session, text: $0) } : nil,
                 onJump: { model.jumpToSession(session) },
-                onDismiss: session.isRemote ? { model.dismissSession(session.id) } : nil
+                onDismiss: session.isRemote ? { model.dismissSession(session.id) } : nil,
+                turnSummary: model.turnSummaries[session.id]
             )
+            .task(id: "\(session.id)|\(session.phase)|\(session.updatedAt.timeIntervalSince1970)") {
+                await model.loadTurnSummary(for: session)
+            }
         }
     }
 
@@ -659,9 +660,13 @@ struct IslandPanelView: View {
                     onAnswer: { model.answerQuestion(for: session.id, answer: $0) },
                     onReply: TerminalTextSender.canReply(to: session, enabled: model.completionReplyEnabled)
                         ? { model.replyToSession(session, text: $0) } : nil,
-                    onJump: { model.jumpToSession(session) }
+                    onJump: { model.jumpToSession(session) },
+                    turnSummary: model.turnSummaries[session.id]
                 )
                 .id(notificationCardIdentity(for: session))
+                .task(id: "\(session.id)|\(session.phase)|\(session.updatedAt.timeIntervalSince1970)") {
+                    await model.loadTurnSummary(for: session)
+                }
 
                 if model.allSessions.count > 1 {
                     Button {
@@ -1224,7 +1229,9 @@ private struct IslandSessionRow: View {
     var onReply: ((String) -> Void)?
     let onJump: () -> Void
     var onDismiss: (() -> Void)?
+    var turnSummary: TurnSummary?
 
+    @State private var showsFullAnswer = false
     @State private var isHighlighted = false
     @State private var detailOverride: Bool?
     @State private var replyText: String = ""
@@ -1717,15 +1724,25 @@ private struct IslandSessionRow: View {
     // MARK: - Completion action area
 
     private var completionActionBody: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            if !completionMessageText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+        let full = completionMessageText
+        let brief = CompletionSummaryText.brief(full)
+        let summaryText = turnSummary?.text ?? brief
+        let hasMore = turnSummary != nil
+            ? !full.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            : CompletionSummaryText.hasMore(brief: brief, full: full)
+        return VStack(alignment: .leading, spacing: 0) {
+            if showsFullAnswer, !full.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 AutoHeightScrollView(maxHeight: 160) {
-                    Markdown(completionMessageText)
+                    Markdown(full)
                         .markdownTheme(.completionCard)
                         .frame(maxWidth: .infinity, alignment: .topLeading)
                         .padding(.horizontal, 14)
                         .padding(.vertical, 9)
                 }
+                completionSummaryActions(hasMore: true)
+            } else if !summaryText.isEmpty {
+                completionSummaryLine(summaryText, needsAction: turnSummary?.needsAction == true)
+                completionSummaryActions(hasMore: hasMore)
             } else {
                 completionEmptyState
             }
@@ -1746,6 +1763,49 @@ private struct IslandSessionRow: View {
             RoundedRectangle(cornerRadius: 10, style: .continuous)
                 .strokeBorder(.white.opacity(completionCardStrokeOpacity))
         )
+    }
+
+    private func completionSummaryLine(_ text: String, needsAction: Bool) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
+            Image(systemName: needsAction ? "questionmark.circle.fill" : "checkmark.circle.fill")
+                .font(.system(size: 11, weight: .bold))
+                .foregroundStyle(needsAction ? IslandDesignPalette.Status.tint(for: .waitingForAnswer) : IslandDesignPalette.Status.completed)
+                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 2) {
+                if needsAction {
+                    Text("НУЖНО ОТ ТЕБЯ")
+                        .font(.system(size: 9.5, weight: .semibold))
+                        .foregroundStyle(IslandDesignPalette.Status.tint(for: .waitingForAnswer))
+                }
+                Text(text)
+                    .font(.system(size: 12.5, weight: turnSummary == nil ? .regular : .semibold))
+                    .foregroundStyle(.white.opacity(0.9))
+                    .lineLimit(3)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .padding(.horizontal, 14)
+        .padding(.top, 10)
+        .padding(.bottom, 8)
+    }
+
+    private func completionSummaryActions(hasMore: Bool) -> some View {
+        HStack(spacing: 8) {
+            Button("Перейти") { onJump() }
+                .buttonStyle(IslandCompactButtonStyle(tint: Color(red: 0.39, green: 0.66, blue: 1)))
+            if hasMore {
+                Button(showsFullAnswer ? "Свернуть ▴" : "Весь ответ ▾") {
+                    withAnimation(.easeInOut(duration: 0.2)) { showsFullAnswer.toggle() }
+                }
+                .buttonStyle(.plain)
+                .font(.system(size: 11.5, weight: .medium))
+                .foregroundStyle(Color(red: 0.39, green: 0.66, blue: 1))
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 14)
+        .padding(.bottom, 10)
     }
 
     private var completionDoneOpacity: Double {

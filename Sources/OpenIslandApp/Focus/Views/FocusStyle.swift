@@ -151,6 +151,9 @@ struct FocusButtonStyle: ButtonStyle {
         case primary
         case secondary
         case quiet
+        case done
+        case waiting
+        case rest
     }
 
     let kind: Kind
@@ -174,6 +177,9 @@ struct FocusButtonStyle: ButtonStyle {
         case .primary: .white
         case .secondary: FocusStyle.primaryText
         case .quiet: FocusStyle.secondaryText
+        case .done: FocusStyle.working
+        case .waiting: FocusStyle.waitingText
+        case .rest: .black
         }
     }
 
@@ -182,6 +188,9 @@ struct FocusButtonStyle: ButtonStyle {
         case .primary: FocusStyle.accent
         case .secondary: FocusStyle.buttonFill
         case .quiet: .clear
+        case .done: FocusStyle.working.opacity(0.16)
+        case .waiting: FocusStyle.waiting.opacity(0.14)
+        case .rest: FocusStyle.working
         }
     }
 }

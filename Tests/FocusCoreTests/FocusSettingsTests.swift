@@ -70,4 +70,42 @@ struct FocusSettingsTests {
         #expect(inRange.maxParallelSessions == 4)
         #expect(inRange.stalledReminderMinutes == 20)
     }
+
+    @Test
+    func legacyTimerDefaultsMigrateOnce() throws {
+        let legacy = try JSONDecoder().decode(FocusSettings.self, from: Data(#"{"pomodoroFocusMinutes":25,"pomodoroBreakMinutes":5}"#.utf8))
+        #expect(legacy.pomodoroFocusMinutes == 50)
+        #expect(legacy.pomodoroBreakMinutes == 10)
+        let custom = try JSONDecoder().decode(FocusSettings.self, from: Data(#"{"pomodoroFocusMinutes":30,"pomodoroBreakMinutes":5}"#.utf8))
+        #expect(custom.pomodoroFocusMinutes == 30)
+        #expect(custom.pomodoroBreakMinutes == 5)
+        var chosen = FocusSettings()
+        chosen.pomodoroFocusMinutes = 25
+        chosen.pomodoroBreakMinutes = 5
+        let roundTrip = try JSONDecoder().decode(FocusSettings.self, from: JSONEncoder().encode(chosen))
+        #expect(roundTrip.pomodoroFocusMinutes == 25)
+        #expect(roundTrip.pomodoroBreakMinutes == 5)
+    }
+
+    @Test
+    func pomodoroDefaultsAndClamping() throws {
+        let defaults = FocusSettings()
+        #expect(defaults.pomodoroFocusMinutes == 50)
+        #expect(defaults.pomodoroBreakMinutes == 10)
+        #expect(defaults.pomodoroCycle == 4)
+        let high = try JSONDecoder().decode(FocusSettings.self, from: Data(#"{"pomodoroFocusMinutes":500,"pomodoroBreakMinutes":99,"pomodoroCycle":20}"#.utf8))
+        #expect(high.pomodoroFocusMinutes == 120)
+        #expect(high.pomodoroBreakMinutes == 30)
+        #expect(high.pomodoroCycle == 8)
+        let low = try JSONDecoder().decode(FocusSettings.self, from: Data(#"{"pomodoroFocusMinutes":1,"pomodoroBreakMinutes":0,"pomodoroCycle":-1}"#.utf8))
+        #expect(low.pomodoroFocusMinutes == 5)
+        #expect(low.pomodoroBreakMinutes == 1)
+        #expect(low.pomodoroCycle == 2)
+        let ok = try JSONDecoder().decode(FocusSettings.self, from: Data(#"{"pomodoroFocusMinutes":50,"pomodoroBreakMinutes":10,"pomodoroCycle":3}"#.utf8))
+        #expect(ok.pomodoroFocusMinutes == 50)
+        #expect(ok.pomodoroBreakMinutes == 10)
+        #expect(ok.pomodoroCycle == 3)
+        let roundTrip = try JSONDecoder().decode(FocusSettings.self, from: JSONEncoder().encode(ok))
+        #expect(roundTrip == ok)
+    }
 }

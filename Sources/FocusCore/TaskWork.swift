@@ -43,9 +43,9 @@ public final class TaskCriteriaService: Sendable {
         }
     }
 
-    public func toggle(id: String) throws {
+    public func toggle(id: String, now: Date = .now) throws {
         try store.dbQueue.write { db in
-            try db.execute(sql: "UPDATE task_criteria SET done = NOT done WHERE id = ?", arguments: [id])
+            try db.execute(sql: "UPDATE task_criteria SET checkedAt = CASE WHEN done THEN NULL ELSE ? END, done = NOT done WHERE id = ?", arguments: [now, id])
         }
     }
 

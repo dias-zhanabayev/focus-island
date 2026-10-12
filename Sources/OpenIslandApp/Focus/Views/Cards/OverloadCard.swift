@@ -10,7 +10,7 @@ struct OverloadCard: View {
     }
 
     private var slots: [HubRow] {
-        focus.hubRows.filter { $0.group != .parked }
+        focus.hubRows.filter { !$0.group.isSettled }
     }
 
     var body: some View {
@@ -142,6 +142,7 @@ struct OverloadCard: View {
         case .idle: "твой ход"
         case .unbound: "без задачи"
         case .parked: "на паузе"
+        case .done: "готова"
         }
     }
 
@@ -153,6 +154,7 @@ struct OverloadCard: View {
         case .idle: "arrow.uturn.left.circle"
         case .unbound: "questionmark.circle"
         case .parked: "pause.circle"
+        case .done: "checkmark.circle"
         }
     }
 
@@ -161,7 +163,7 @@ struct OverloadCard: View {
         case .waiting: FocusStyle.waitingText
         case .running: FocusStyle.working
         case .review: FocusStyle.done
-        case .idle, .unbound, .parked: FocusStyle.secondaryText
+        case .idle, .unbound, .parked, .done: FocusStyle.secondaryText
         }
     }
 }

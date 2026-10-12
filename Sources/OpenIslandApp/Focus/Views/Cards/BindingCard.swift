@@ -74,7 +74,7 @@ struct BindingCard: View {
 
     private func taskRow(_ task: FocusTask) -> some View {
         Button {
-            focus.bind(sessionID: sessionID, taskID: task.id)
+            focus.bindNewSession(sessionID: sessionID, taskID: task.id)
         } label: {
             HStack(spacing: 10) {
                 Text(task.title)

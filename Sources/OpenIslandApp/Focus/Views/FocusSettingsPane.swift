@@ -60,6 +60,20 @@ struct FocusSettingsPane: View {
                 Toggle("Показывать подсказку, пока Claude работает", isOn: $focus.settings.nextActionEnabled)
                 Stepper("Через \(Int(focus.settings.nextActionDelay)) с", value: $focus.settings.nextActionDelay, in: 5...120, step: 5)
             }
+            Section("Фокус-таймер") {
+                Stepper("Фокус \(focus.settings.pomodoroFocusMinutes) мин", value: $focus.settings.pomodoroFocusMinutes, in: FocusSettings.pomodoroFocusRange, step: 5)
+                Stepper("Перерыв \(focus.settings.pomodoroBreakMinutes) мин", value: $focus.settings.pomodoroBreakMinutes, in: FocusSettings.pomodoroBreakRange)
+                Stepper("Помодоро в цикле: \(focus.settings.pomodoroCycle)", value: $focus.settings.pomodoroCycle, in: FocusSettings.pomodoroCycleRange)
+                Toggle("Начинать перерыв автоматически", isOn: $focus.settings.autoBreakEnabled)
+                Toggle("Звук начала перерыва", isOn: $focus.settings.breakSoundEnabled)
+                    .disabled(!focus.settings.autoBreakEnabled)
+                Text("Отсчёт 5 секунд после конца фокуса. Без автоперерыва карточка ждёт нажатия.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Text("Новые значения — со следующего помодоро")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
             Section("Сессии") {
                 Stepper("Комфортно держу параллельно: \(focus.settings.maxParallelSessions)", value: $focus.settings.maxParallelSessions, in: Self.maxParallelRange)
                 Stepper("Напомнить о ждущей сессии через \(focus.settings.stalledReminderMinutes) мин", value: $focus.settings.stalledReminderMinutes, in: Self.stalledReminderRange)

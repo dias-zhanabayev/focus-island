@@ -176,6 +176,33 @@ public final class FocusStore: Sendable {
                 t.column("dayStartShownAt", .datetime)
             }
         }
+        if identifier == "v2" { return migrator }
+        migrator.registerMigration("v3") { db in
+            try db.create(table: "pomodoros") { t in
+                t.primaryKey("id", .text)
+                t.column("taskId", .text)
+                t.column("phase", .text).notNull()
+                t.column("plannedSeconds", .integer).notNull()
+                t.column("startedAt", .datetime).notNull()
+                t.column("endedAt", .datetime)
+                t.column("pausedSeconds", .double).notNull().defaults(to: 0)
+                t.column("pausedAt", .datetime)
+                t.column("completed", .boolean).notNull().defaults(to: false)
+            }
+            try db.create(index: "pomodoros_on_taskId_startedAt", on: "pomodoros", columns: ["taskId", "startedAt"])
+        }
+        if identifier == "v3" { return migrator }
+        migrator.registerMigration("v4") { db in
+            try db.alter(table: "task_criteria") { t in
+                t.add(column: "checkedAt", .datetime)
+            }
+        }
+        if identifier == "v4" { return migrator }
+        migrator.registerMigration("v5") { db in
+            try db.alter(table: "sessions") { t in
+                t.add(column: "doneAt", .datetime)
+            }
+        }
         return migrator
     }
 }
