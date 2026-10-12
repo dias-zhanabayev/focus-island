@@ -1,16 +1,7 @@
 name: CI
 
 on:
-  pull_request:
-  push:
-    branches:
-      - main
-      - 'feat/**'
-      - 'fix/**'
-      - 'docs/**'
-      - 'refactor/**'
-      - 'chore/**'
-      - 'investigate/**'
+  workflow_dispatch:
 
 jobs:
   harness:

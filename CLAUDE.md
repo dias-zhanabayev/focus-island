@@ -43,7 +43,7 @@ For Xcode: open `Package.swift`.
 
 - **Never edit in the main worktree.** Use `EnterWorktree` (preferred) or `git worktree add`, branched off latest local `main`.
 - Branch name matches topic: `feat/<topic>`, `fix/<topic>`. One coherent change per round.
-- `main` is protected — direct push is rejected. All changes ship via PR **targeting `main`**. No chain PRs (A → B → main) — wait for the dependency to merge, then rebase.
+- Repo: private `dias-zhanabayev/focus-island` (`origin`). `upstream` is the original Open Island — never push there. `main` on `origin` is the release branch.
 - Conventional commit messages (`feat:`, `fix:`, `refactor:`, `docs:`, `chore:`). Never `--amend` unless asked.
 - After changes: run the matching verification (`swift build` / `swift test` / manual). If no check exists, say so in the summary and still commit.
 - Never `git reset --hard`, force-push, or overwrite user changes without explicit approval. If unexpected state appears, inspect — don't bulldoze.
@@ -61,10 +61,10 @@ The project is past MVP and welcomes new ideas and creative directions, but the 
 
 ## Release
 
-- Triggered by pushing a `v*` tag to `main`. CI builds, signs, notarizes, publishes the DMG. Don't create the GitHub release manually — edit the draft CI produces.
-- Before tagging: `git fetch origin main` and review every merged PR since the last tag. Don't trust memory.
-- Bilingual required (English + 简体中文). Template: `.github/RELEASE_TEMPLATE.md`. Entry format: `- **Category**: English (#PR)\n  中文 (#PR)`. External contributors get `— Thanks @user` on the English line.
-- Title: `Open Island vX.Y.Z — Short English Title`. Installation section bilingual.
+- Local, from a clean `main` equal to `origin/main`: `zsh scripts/release.sh X.Y.Z`. It runs tests, builds a universal DMG/ZIP signed with the local "Open Island Dev Local" identity (`scripts/setup-dev-signing.sh`), tags `vX.Y.Z`, pushes the tag and creates the GitHub Release with `install.sh`. No notarization, no Sparkle.
+- Notes live in `docs/releases/vX.Y.Z.md` (Russian); the first line `# Focus Island vX.Y.Z — Title` becomes the release title. Before writing them, review `git log` since the last tag.
+- Install/update for users: `gh release download -R dias-zhanabayev/focus-island -p install.sh -O - | zsh`.
+- CI (`.github/workflows/ci.yml`) is manual-only (`workflow_dispatch`) to save private-repo macOS minutes; run `zsh scripts/harness.sh ci` locally.
 
 ## Conventions
 

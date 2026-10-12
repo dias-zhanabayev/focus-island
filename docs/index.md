@@ -55,3 +55,29 @@ This index is the repository map for humans and coding agents. Read these files 
 - [docs/island-position-investigation.md](./island-position-investigation.md) for notch and external-display placement work
 - [docs/notchi-integration.md](./notchi-integration.md) for integration notes related to Notchi
 - [docs/installed-app-bundle-analysis.md](./installed-app-bundle-analysis.md) for installed-app bundle observations
+
+## Focus Island
+
+- [docs/releases/v0.1.0.md](./releases/v0.1.0.md) — release notes; releases ship with `scripts/release.sh`
+- [docs/focus-smoke.md](./focus-smoke.md) — manual smoke checklist
+- [docs/superpowers/specs/2026-10-09-focus-island-pdr.md](./superpowers/specs/2026-10-09-focus-island-pdr.md)
+- [docs/superpowers/specs/2026-10-10-focus-island-journey-design.md](./superpowers/specs/2026-10-10-focus-island-journey-design.md)
+- [docs/superpowers/specs/2026-10-10-focus-island-pomodoro-design.md](./superpowers/specs/2026-10-10-focus-island-pomodoro-design.md)
+- [docs/superpowers/plans/2026-10-09-focus-island.md](./superpowers/plans/2026-10-09-focus-island.md)
+- [docs/superpowers/plans/2026-10-10-focus-island-journey.md](./superpowers/plans/2026-10-10-focus-island-journey.md)
+- [docs/superpowers/plans/2026-10-10-focus-island-pomodoro.md](./superpowers/plans/2026-10-10-focus-island-pomodoro.md)
+- [docs/diagrams/focus-island-auto-break-2026-10-11.md](./diagrams/focus-island-auto-break-2026-10-11.md)
+- [docs/diagrams/focus-island-completion-summary-2026-10-11.md](./diagrams/focus-island-completion-summary-2026-10-11.md)
+- [docs/diagrams/focus-island-coordinator-wiring-2026-10-09.md](./diagrams/focus-island-coordinator-wiring-2026-10-09.md)
+- [docs/diagrams/focus-island-focus-start-2026-10-11.md](./diagrams/focus-island-focus-start-2026-10-11.md)
+- [docs/diagrams/focus-island-journey-plan-2026-10-10.md](./diagrams/focus-island-journey-plan-2026-10-10.md)
+- [docs/diagrams/focus-island-multi-session-2026-10-10.md](./diagrams/focus-island-multi-session-2026-10-10.md)
+- [docs/diagrams/focus-island-new-session-2026-10-11.md](./diagrams/focus-island-new-session-2026-10-11.md)
+- [docs/diagrams/focus-island-next-action-2026-10-09.md](./diagrams/focus-island-next-action-2026-10-09.md)
+- [docs/diagrams/focus-island-pomodoro-2026-10-10.md](./diagrams/focus-island-pomodoro-2026-10-10.md)
+- [docs/diagrams/focus-island-session-done-2026-10-12.md](./diagrams/focus-island-session-done-2026-10-12.md)
+- [docs/diagrams/focus-island-stay-and-return-2026-10-10.md](./diagrams/focus-island-stay-and-return-2026-10-10.md)
+- [docs/diagrams/focus-island-take-task-2026-10-10.md](./diagrams/focus-island-take-task-2026-10-10.md)
+- [docs/diagrams/focus-island-task-sessions-2026-10-11.md](./diagrams/focus-island-task-sessions-2026-10-11.md)
+- [docs/diagrams/focus-island-timer-lengths-2026-10-11.md](./diagrams/focus-island-timer-lengths-2026-10-11.md)
+- [docs/diagrams/focus-island-waiting-outside-2026-10-11.md](./diagrams/focus-island-waiting-outside-2026-10-11.md)

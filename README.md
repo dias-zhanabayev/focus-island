@@ -48,6 +48,26 @@
 - «Сессии»: лимит параллельных (1–6), напоминание о ждущей сессии (5–60 мин), утренний экран «Начало дня».
 - «Что дальше?», «Отвлечения» (порог, стоп-лист доменов и приложений), терминал для Resume, хоткей доски.
 
+## Установка
+
+Нужен [GitHub CLI](https://cli.github.com) с доступом к репозиторию (`brew install gh && gh auth login`). Одна команда ставит последний релиз в `/Applications` и запускает его; повторный запуск обновляет:
+
+```bash
+gh release download -R dias-zhanabayev/focus-island -p install.sh -O - | zsh
+```
+
+Вручную: на странице [Releases](https://github.com/dias-zhanabayev/focus-island/releases) скачать `Focus.Island.dmg` (универсальный: Apple Silicon и Intel), перетащить «Focus Island» в «Программы», при первом запуске — правый клик → «Открыть» (сборка подписана локальным сертификатом, без нотаризации Apple).
+
+После первого запуска: Settings → Setup → установить хуки Claude Code.
+
+## Выпуск релиза
+
+```bash
+zsh scripts/release.sh 0.2.0
+```
+
+Нужны: чистая `main`, совпадающая с `origin/main`, заметки `docs/releases/v0.2.0.md` (первая строка — заголовок релиза) и сертификат из `zsh scripts/setup-dev-signing.sh`. Скрипт прогоняет тесты, собирает универсальный подписанный DMG и ZIP, ставит тег `v0.2.0` и публикует GitHub Release вместе с `install.sh`.
+
 ## Сборка и запуск dev-версии
 
 ```bash
@@ -57,6 +77,8 @@ zsh scripts/launch-dev-app.sh
 Хуки для интеграции с Claude Code устанавливаются из меню Settings → Setup. Установка хуков модифицирует `~/.claude/settings.json`.
 
 Данные приложения хранятся в `~/Library/Application Support/FocusIsland/`.
+
+Проверки: `zsh scripts/harness.sh ci`, тесты: `zsh scripts/test-clt.sh`. Документация — [docs/index.md](docs/index.md).
 
 ## О проекте
 

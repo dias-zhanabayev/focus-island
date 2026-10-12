@@ -25,19 +25,33 @@ entitlements_path="$repo_root/config/packaging/OpenIslandApp.entitlements"
 
 cd "$repo_root"
 
-arch_flags=()
-if [[ "${OPEN_ISLAND_UNIVERSAL:-false}" == "true" ]]; then
-    arch_flags=(--arch arm64 --arch x86_64)
-fi
-
-swift build -c release "${arch_flags[@]}" --product OpenIslandApp
-swift build -c release "${arch_flags[@]}" --product OpenIslandHooks
-swift build -c release "${arch_flags[@]}" --product OpenIslandSetup
-
-build_bin_dir="$(swift build -c release "${arch_flags[@]}" --show-bin-path)"
+products=(OpenIslandApp OpenIslandHooks OpenIslandSetup)
+for product in "${products[@]}"; do
+    swift build -c release --product "$product"
+done
+build_bin_dir="$(swift build -c release --show-bin-path)"
 app_binary="$build_bin_dir/OpenIslandApp"
 hooks_binary="$build_bin_dir/OpenIslandHooks"
 setup_binary="$build_bin_dir/OpenIslandSetup"
+
+if [[ "${OPEN_ISLAND_UNIVERSAL:-false}" == "true" ]]; then
+    other_triple="x86_64-apple-macosx14.0"
+    [[ "$(uname -m)" == "x86_64" ]] && other_triple="arm64-apple-macosx14.0"
+    for product in "${products[@]}"; do
+        swift build -c release --triple "$other_triple" --product "$product"
+    done
+    other_bin_dir="$(swift build -c release --triple "$other_triple" --show-bin-path)"
+    universal_dir="$package_root/universal"
+    rm -rf "$universal_dir"
+    mkdir -p "$universal_dir"
+    for product in "${products[@]}"; do
+        lipo -create "$build_bin_dir/$product" "$other_bin_dir/$product" -output "$universal_dir/$product"
+    done
+    app_binary="$universal_dir/OpenIslandApp"
+    hooks_binary="$universal_dir/OpenIslandHooks"
+    setup_binary="$universal_dir/OpenIslandSetup"
+    lipo -info "$app_binary"
+fi
 brand_icon="$repo_root/Assets/Brand/OpenIsland.icns"
 
 # Package the committed brand assets instead of re-rendering them: the icon
@@ -205,19 +219,28 @@ fi
 # --- Styled DMG creation ---
 dmg_bg="$repo_root/Assets/Brand/dmg-background@2x.png"
 
-create-dmg \
-    --volname "$app_name" \
-    --background "$dmg_bg" \
-    --window-pos 200 120 \
-    --window-size 660 400 \
-    --icon-size 96 \
-    --text-size 13 \
-    --icon "$app_name.app" 180 210 \
-    --hide-extension "$app_name.app" \
-    --app-drop-link 480 210 \
-    --no-internet-enable \
-    "$dmg_path" \
-    "$bundle_dir"
+if command -v create-dmg >/dev/null 2>&1; then
+    create-dmg \
+        --volname "$app_name" \
+        --background "$dmg_bg" \
+        --window-pos 200 120 \
+        --window-size 660 400 \
+        --icon-size 96 \
+        --text-size 13 \
+        --icon "$app_name.app" 180 210 \
+        --hide-extension "$app_name.app" \
+        --app-drop-link 480 210 \
+        --no-internet-enable \
+        "$dmg_path" \
+        "$bundle_dir"
+else
+    dmg_stage="$(mktemp -d)/dmg"
+    mkdir -p "$dmg_stage"
+    cp -R "$bundle_dir" "$dmg_stage/"
+    ln -s /Applications "$dmg_stage/Applications"
+    hdiutil create -volname "$app_name" -srcfolder "$dmg_stage" -fs HFS+ -format UDZO -ov "$dmg_path" >/dev/null
+    rm -rf "$(dirname "$dmg_stage")"
+fi
 
 # Sign the DMG itself (required before notarization)
 if [[ -n "$signing_identity" ]]; then
