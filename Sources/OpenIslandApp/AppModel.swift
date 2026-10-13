@@ -550,7 +550,7 @@ final class AppModel {
         focus.lookupSessionLabels = { ids in
             await Task.detached(priority: .utility) {
                 ClaudeDesktopSessionLocator().sessions(forCLISessionIDs: ids).mapValues {
-                    SessionLabel(title: $0.title, status: $0.turnSummary?.text)
+                    SessionLabel(title: $0.title, status: $0.turnSummary?.text, priorSessionIDs: $0.priorCLISessionIDs)
                 }
             }.value
         }

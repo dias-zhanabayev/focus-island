@@ -61,4 +61,68 @@ struct FocusSessionLabelTests {
         #expect(c.sessionDetail("s1", prompt: "<system-reminder>x</system-reminder>", cwd: "/tmp/proj") == "PR обновлён")
         #expect(calls.count == 2)
     }
+
+    func desktopSession(_ id: String, phase: SessionPhase, at date: Date) -> AgentSession {
+        var session = AgentSession(
+            id: id, title: "Claude · proj", tool: .claudeCode, origin: .live, attachmentState: .attached, phase: phase, summary: "", updatedAt: date, firstSeenAt: date,
+            jumpTarget: JumpTarget(terminalApp: "Claude.app", workspaceName: "proj", paneTitle: "", workingDirectory: "/tmp/proj"),
+            claudeMetadata: ClaudeSessionMetadata(initialUserPrompt: "почини онбординг", lastUserPrompt: "почини онбординг", startupSource: .startup)
+        )
+        session.isHookManaged = true
+        return session
+    }
+
+    func makeCoordinator(priors: [String: [String]]) throws -> FocusCoordinator {
+        let store = try FocusStore.inMemory()
+        let defaults = UserDefaults(suiteName: "focus-continuation-\(UUID().uuidString)")!
+        let c = FocusCoordinator(store: store, defaults: defaults, launcher: RecordingLauncher(), promptSender: RecordingPromptSender(result: .unsupported), gitDiff: StubGitDiff(files: []), clipboard: { _ in }, runBackfill: false)
+        c.settings.dayStartEnabled = false
+        c.settings.nextActionEnabled = false
+        c.lookupSessionLabels = { ids in
+            var found: [String: SessionLabel] = [:]
+            for id in ids { found[id] = SessionLabel(title: "Онбординг", status: nil, priorSessionIDs: priors[id] ?? []) }
+            return found
+        }
+        c.start(initialSessions: [], now: t0)
+        return c
+    }
+
+    @Test
+    func continuedDesktopSessionKeepsItsTask() async throws {
+        let c = try makeCoordinator(priors: ["new": ["older", "old"]])
+        c.createTask(title: "A", column: .inProgress, projectPath: "/tmp/proj")
+        let a = try #require(c.board.tasks.first { $0.title == "A" }?.id)
+        c.sessionsDidChange([desktopSession("old", phase: .completed, at: t0)], now: t0)
+        c.bind(sessionID: "old", taskID: a, now: t0)
+        let later = t0.addingTimeInterval(600)
+        c.sessionsDidChange([desktopSession("new", phase: .running, at: later)], now: later)
+        for _ in 0..<200 where c.taskID(forSession: "new") == nil { await Task.yield() }
+        #expect(c.taskID(forSession: "new") == a)
+        #expect(!c.pendingBindingSessionIDs.contains("new"))
+    }
+
+    @Test
+    func continuationIsAdoptedOnceSoManualUnbindSticks() async throws {
+        let c = try makeCoordinator(priors: ["new": ["old"]])
+        c.createTask(title: "A", column: .inProgress, projectPath: "/tmp/proj")
+        let a = try #require(c.board.tasks.first { $0.title == "A" }?.id)
+        c.sessionsDidChange([desktopSession("old", phase: .completed, at: t0)], now: t0)
+        c.bind(sessionID: "old", taskID: a, now: t0)
+        c.sessionsDidChange([desktopSession("new", phase: .running, at: t0)], now: t0)
+        for _ in 0..<200 where c.taskID(forSession: "new") == nil { await Task.yield() }
+        c.bind(sessionID: "new", taskID: nil, now: t0)
+        c.tick(now: t0.addingTimeInterval(400))
+        for _ in 0..<200 { await Task.yield() }
+        #expect(c.taskID(forSession: "new") == nil)
+    }
+
+    @Test
+    func continuationWithoutBoundPredecessorStaysNew() async throws {
+        let c = try makeCoordinator(priors: ["new": ["old"]])
+        c.sessionsDidChange([desktopSession("old", phase: .completed, at: t0)], now: t0)
+        c.sessionsDidChange([desktopSession("new", phase: .running, at: t0)], now: t0)
+        for _ in 0..<200 { await Task.yield() }
+        #expect(c.taskID(forSession: "new") == nil)
+        #expect(c.pendingBindingSessionIDs.contains("new"))
+    }
 }

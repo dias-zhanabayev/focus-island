@@ -52,6 +52,17 @@ struct ClaudeDesktopSessionLocatorTests {
     }
 
     @Test
+    func readsPriorCLISessionIDs() throws {
+        let root = try makeRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        try write(root, "local_aaa", ["sessionId": "local_aaa", "cliSessionId": "cli-3", "priorCliSessionIds": ["cli-1", "cli-2"]])
+        try write(root, "local_bbb", ["sessionId": "local_bbb", "cliSessionId": "cli-4", "priorCliSessionIds": "broken"])
+        let found = ClaudeDesktopSessionLocator(root: root).sessions(forCLISessionIDs: ["cli-3", "cli-4"])
+        #expect(found["cli-3"]?.priorCLISessionIDs == ["cli-1", "cli-2"])
+        #expect(found["cli-4"]?.priorCLISessionIDs == [])
+    }
+
+    @Test
     func buildsContinueDeepLink() {
         #expect(ClaudeDesktopSessionLocator.continueURL(desktopSessionID: "local_80faf7f1-f84a")?.absoluteString == "claude://code/continue?session=local_80faf7f1-f84a")
         #expect(ClaudeDesktopSessionLocator.continueURL(desktopSessionID: "x&y") == nil)

@@ -139,6 +139,7 @@ final class FocusCoordinator {
     nonisolated static let labelRefreshSeconds: TimeInterval = 300
     private(set) var sessionLabels: [String: String] = [:]
     private(set) var sessionStatuses: [String: String] = [:]
+    @ObservationIgnored private var continuationChecked: Set<String> = []
     @ObservationIgnored var lookupSessionLabels: (@Sendable (Set<String>) async -> [String: SessionLabel])?
     @ObservationIgnored private var labelLookupInFlight = false
     @ObservationIgnored private var labelLookedUpAt: [String: Date] = [:]
@@ -1767,8 +1768,26 @@ final class FocusCoordinator {
             for (id, label) in found {
                 if let title = label.title, self.sessionLabels[id] != title { self.sessionLabels[id] = title }
                 if let status = label.status, self.sessionStatuses[id] != status { self.sessionStatuses[id] = status }
+                self.adoptContinuation(sessionID: id, priorSessionIDs: label.priorSessionIDs, now: now)
             }
+            self.refreshSessionLabels(now: now)
         }
+    }
+
+    func adoptContinuation(sessionID: String, priorSessionIDs: [String], now: Date = .now) {
+        guard !priorSessionIDs.isEmpty, !continuationChecked.contains(sessionID) else { return }
+        continuationChecked.insert(sessionID)
+        guard (try? history.session(id: sessionID))?.taskId == nil,
+              let predecessor = priorSessionIDs.reversed().lazy.compactMap({ try? self.history.session(id: $0) }).first(where: { $0.taskId != nil }),
+              let taskID = predecessor.taskId else { return }
+        bind(sessionID: sessionID, taskID: taskID, now: now)
+        if predecessor.doneAt != nil {
+            attempt { try history.markDone(sessionID: sessionID, at: predecessor.doneAt ?? now) }
+        } else if let parkedAt = predecessor.parkedAt {
+            attempt { try history.park(sessionID: sessionID, at: parkedAt) }
+        }
+        reload()
+        refreshHub(now: now)
     }
 
     nonisolated static func labelLookupDue(lastLookup: Date?, hasLabel: Bool, now: Date) -> Bool {
@@ -2385,6 +2404,7 @@ struct DoneSessionNotice: Equatable, Sendable {
 struct SessionLabel: Equatable, Sendable {
     var title: String?
     var status: String?
+    var priorSessionIDs: [String] = []
 }
 
 struct ClosedTaskNotice: Equatable, Sendable {

@@ -15,6 +15,7 @@ struct ClaudeDesktopSessionLocator: Sendable {
         let title: String?
         var turnSummary: TurnSummary? = nil
         var lastActivityAt: Date? = nil
+        var priorCLISessionIDs: [String] = []
     }
 
     func desktopSessionID(forCLISessionID cliSessionID: String) -> String? {
@@ -50,7 +51,8 @@ struct ClaudeDesktopSessionLocator: Sendable {
                 id: id,
                 title: title?.isEmpty == false ? title : nil,
                 turnSummary: Self.turnSummary(object),
-                lastActivityAt: (object["lastActivityAt"] as? Double).map { Date(timeIntervalSince1970: $0 / 1000) }
+                lastActivityAt: (object["lastActivityAt"] as? Double).map { Date(timeIntervalSince1970: $0 / 1000) },
+                priorCLISessionIDs: (object["priorCliSessionIds"] as? [String]) ?? []
             )
         }
         return found
