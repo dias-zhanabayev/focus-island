@@ -1,5 +1,7 @@
 # Focus Island
 
+[![Focus Island: один помодоро, три сессии Claude Code в Ghostty, Claude и PyCharm](docs/media/focus-island-demo.gif)](docs/media/focus-island-demo.mp4)
+
 **Focus Island** — это инструмент для macOS, который превращает время ожидания Claude Code в полезное действие. Пока Claude выполняет задачу, приложение предлагает вам следующий шаг: новую задачу с простой канбан-доски, ждущую сессию или напоминает вернуться на работу, если вы отвлеклись на соцсети.
 
 ## Что умеет
