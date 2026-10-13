@@ -18,12 +18,12 @@ struct BridgeServerSocketOwnershipTests {
     @Test
     func staleSocketFileIsReplaced() throws {
         let socketURL = BridgeSocketLocation.uniqueTestURL()
-        let stale = BridgeServer(socketURL: socketURL)
-        try stale.start()
-        stale.stop()
-        if !FileManager.default.fileExists(atPath: socketURL.path) {
-            FileManager.default.createFile(atPath: socketURL.path, contents: nil)
+        let fd = socket(AF_UNIX, SOCK_STREAM, 0)
+        try withUnixSocketAddress(path: socketURL.path) { address, length in
+            _ = bind(fd, address, length)
         }
+        close(fd)
+        #expect(FileManager.default.fileExists(atPath: socketURL.path))
         #expect(!BridgeServer.hasLiveListener(at: socketURL))
 
         let fresh = BridgeServer(socketURL: socketURL)
