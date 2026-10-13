@@ -50,12 +50,12 @@ public enum HubGroup: Int, CaseIterable, Sendable {
     public var title: String {
         switch self {
         case .waiting: "Ждут тебя"
-        case .review: "Готово, проверь"
+        case .review: "Закончил, проверь"
         case .running: "Работают"
         case .idle: "Твой ход"
         case .unbound: "Без задачи"
         case .parked: "На паузе"
-        case .done: "Готовые"
+        case .done: "Завершённые"
         }
     }
 }
@@ -165,20 +165,20 @@ public enum SessionHub {
         case .review:
             return "Claude закончил \(minutes) мин назад"
         case .running:
-            guard let progress else { return "Работает · \(minutes) мин" }
+            guard let progress else { return "\(minutes) мин в работе" }
             let step = min(progress.total, progress.completed + 1)
             var parts = ["Шаг \(step) из \(progress.total)"]
             if let current = progress.currentTitle { parts.append(current) }
             parts.append("\(minutes) мин")
             return parts.joined(separator: " · ")
         case .idle:
-            return "Claude закончил \(minutes) мин назад · твой ход"
+            return "Claude закончил \(minutes) мин назад"
         case .unbound:
             return "Нет активности \(minutes) мин"
         case .parked:
             return "На паузе · \(minutes) мин"
         case .done:
-            return "Готово"
+            return "Завершена"
         }
     }
 }

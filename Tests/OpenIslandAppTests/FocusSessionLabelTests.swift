@@ -125,4 +125,21 @@ struct FocusSessionLabelTests {
         #expect(c.taskID(forSession: "new") == nil)
         #expect(c.pendingBindingSessionIDs.contains("new"))
     }
+
+    final class Ended: @unchecked Sendable {
+        var ids: [String] = []
+    }
+
+    @Test
+    func priorIDsOfALiveSessionAreEnded() async throws {
+        let c = try makeCoordinator(priors: ["new": ["gone", "old"]])
+        let ended = Ended()
+        c.endSupersededSessions = { ended.ids.append(contentsOf: $0) }
+        c.lookupSessionLabels = { ids in
+            ids.contains("new") ? ["new": SessionLabel(title: "Онбординг", status: nil, priorSessionIDs: ["gone", "old"])] : [:]
+        }
+        c.sessionsDidChange([desktopSession("old", phase: .completed, at: t0), desktopSession("new", phase: .running, at: t0)], now: t0)
+        for _ in 0..<200 where ended.ids.isEmpty { await Task.yield() }
+        #expect(ended.ids == ["old"])
+    }
 }

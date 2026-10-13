@@ -69,4 +69,17 @@ struct ClaudeDesktopSessionLocatorTests {
         #expect(ClaudeDesktopSessionLocator.isClaudeDesktop(terminalApp: "Claude.app"))
         #expect(!ClaudeDesktopSessionLocator.isClaudeDesktop(terminalApp: "Ghostty"))
     }
+
+    @Test
+    func focusedSessionIsTheLastFocusedOne() throws {
+        let root = try makeRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let locator = ClaudeDesktopSessionLocator(root: root)
+        #expect(locator.focusedCLISessionID() == nil)
+        try write(root, "local_a", ["sessionId": "local_a", "cliSessionId": "cli-a", "lastFocusedAt": 1000.0])
+        try write(root, "local_b", ["sessionId": "local_b", "cliSessionId": "cli-b", "lastFocusedAt": 3000.0])
+        try write(root, "local_c", ["sessionId": "local_c", "cliSessionId": "cli-c", "lastFocusedAt": 5000.0, "isArchived": true])
+        try write(root, "local_d", ["sessionId": "local_d", "cliSessionId": "cli-d"])
+        #expect(locator.focusedCLISessionID() == "cli-b")
+    }
 }

@@ -87,7 +87,7 @@ struct SessionHubTests {
         let result = rows(sessions, records: [record("bound", taskId: "t1")], tasks: [task("t1")])
         #expect(Set(result.map(\.id)) == ["seen", "bound"])
         #expect(result.allSatisfy { $0.group == .idle })
-        #expect(result.first { $0.id == "seen" }?.detail == "Claude закончил 5 мин назад · твой ход")
+        #expect(result.first { $0.id == "seen" }?.detail == "Claude закончил 5 мин назад")
     }
 
     @Test
@@ -174,7 +174,7 @@ struct SessionHubTests {
         #expect(byID["d"]?.detail == "Claude закончил 12 мин назад")
         #expect(byID["r"]?.detail == "Шаг 2 из 3 · обновляет хендлеры · 4 мин")
         #expect(byID["r"]?.progress?.total == 3)
-        #expect(byID["p"]?.detail == "Работает · 2 мин")
+        #expect(byID["p"]?.detail == "2 мин в работе")
         #expect(byID["a"]?.since == now(-3))
     }
 
@@ -193,7 +193,7 @@ struct SessionHubTests {
         let result = rows([session("d", .completed), session("o", .running)], records: [done, orphan], tasks: [task("t1")])
         let byID = Dictionary(uniqueKeysWithValues: result.map { ($0.id, $0) })
         #expect(byID["d"]?.group == .done)
-        #expect(byID["d"]?.detail == "Готово")
+        #expect(byID["d"]?.detail == "Завершена")
         #expect(byID["o"]?.group != .done)
         #expect(HubGroup.done.isSettled && HubGroup.parked.isSettled && !HubGroup.idle.isSettled)
         #expect(OverloadPolicy.evaluate(rows: [byID["d"]!], limit: 0) == nil)

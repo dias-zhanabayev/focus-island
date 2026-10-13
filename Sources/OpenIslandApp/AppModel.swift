@@ -554,6 +554,11 @@ final class AppModel {
                 }
             }.value
         }
+        focus.endSupersededSessions = { [weak self] sessionIDs in
+            guard let self else { return }
+            for id in sessionIDs { self.dismissSession(id) }
+            self.discovery.scheduleClaudeSessionPersistence()
+        }
         focus.jumpToSession = { [weak self] sessionID in
             guard let self, let session = self.state.session(id: sessionID) else { return }
             self.jumpToSession(session, marksSeen: false)
@@ -1521,6 +1526,9 @@ final class AppModel {
             }
 
             let shouldSuppress = await self.isNotificationSessionAlreadyFrontmost(session)
+            if !Task.isCancelled, shouldSuppress, session.phase == .completed {
+                self.focus.markSessionSeen(session.id)
+            }
             guard !Task.isCancelled,
                   !shouldSuppress,
                   self.notificationSurfaceIsEligibleForPresentation(surface, ingress: ingress) else {

@@ -36,6 +36,8 @@
 - [docs/diagrams/focus-island-next-action-2026-10-09.md](./diagrams/focus-island-next-action-2026-10-09.md) — Focus Island: подсказка «Что дальше?» — sequence-диаграмма
 - [docs/diagrams/focus-island-pomodoro-2026-10-10.md](./diagrams/focus-island-pomodoro-2026-10-10.md) — Focus Island — старт задачи и помодоро — sequence diagram
 - [docs/diagrams/focus-island-session-continuation-2026-10-13.md](./diagrams/focus-island-session-continuation-2026-10-13.md) — Focus Island session continuation — sequence diagram
+- [docs/diagrams/focus-island-first-task-onboarding-2026-10-14.md](./diagrams/focus-island-first-task-onboarding-2026-10-14.md) — Focus Island first task onboarding — sequence diagram
+- [docs/diagrams/focus-island-answer-on-screen-2026-10-14.md](./diagrams/focus-island-answer-on-screen-2026-10-14.md) — Focus Island answer already on screen — sequence diagram
 - [docs/diagrams/focus-island-session-done-2026-10-12.md](./diagrams/focus-island-session-done-2026-10-12.md) — Focus Island session done — sequence diagram
 - [docs/diagrams/focus-island-stay-and-return-2026-10-10.md](./diagrams/focus-island-stay-and-return-2026-10-10.md) — Focus Island — остаться в задаче и вернуться — sequence diagram
 - [docs/diagrams/focus-island-take-task-2026-10-10.md](./diagrams/focus-island-take-task-2026-10-10.md) — Focus Island — взять задачу и работать в её сессиях — sequence diagram

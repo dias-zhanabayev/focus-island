@@ -5,6 +5,9 @@ import OpenIslandCore
 struct ForegroundTerminalSessionProbe {
     typealias FrontmostBundleIdentifierProvider = @Sendable () -> String?
     typealias AppleScriptRunner = @Sendable (String) async throws -> String
+    typealias FocusedDesktopSessionProvider = @Sendable () -> String?
+
+    static let claudeDesktopBundleIdentifier = "com.anthropic.claudefordesktop"
 
     private static let fieldSeparator = "\u{1f}"
     private static let appleScriptTimeout: DispatchTimeInterval = .seconds(1)
@@ -51,6 +54,7 @@ struct ForegroundTerminalSessionProbe {
 
     private let frontmostBundleIdentifierProvider: FrontmostBundleIdentifierProvider
     private let appleScriptRunner: AppleScriptRunner
+    private let focusedDesktopSessionProvider: FocusedDesktopSessionProvider
 
     /// Returns `true` when the provided session already owns the focused
     /// surface of the current frontmost terminal app.
@@ -58,14 +62,25 @@ struct ForegroundTerminalSessionProbe {
         frontmostBundleIdentifierProvider: @escaping FrontmostBundleIdentifierProvider = {
             NSWorkspace.shared.frontmostApplication?.bundleIdentifier
         },
-        appleScriptRunner: @escaping AppleScriptRunner = Self.runAppleScript
+        appleScriptRunner: @escaping AppleScriptRunner = Self.runAppleScript,
+        focusedDesktopSessionProvider: @escaping FocusedDesktopSessionProvider = {
+            ClaudeDesktopSessionLocator().focusedCLISessionID()
+        }
     ) {
         self.frontmostBundleIdentifierProvider = frontmostBundleIdentifierProvider
         self.appleScriptRunner = appleScriptRunner
+        self.focusedDesktopSessionProvider = focusedDesktopSessionProvider
     }
 
     func matches(session: AgentSession) async -> Bool {
-        await matches(jumpTarget: session.jumpTarget)
+        if let terminalApp = session.jumpTarget?.terminalApp,
+           ClaudeDesktopSessionLocator.isClaudeDesktop(terminalApp: terminalApp) {
+            guard frontmostBundleIdentifierProvider() == Self.claudeDesktopBundleIdentifier else { return false }
+            let provider = focusedDesktopSessionProvider
+            let focused = await Task.detached(priority: .userInitiated) { provider() }.value
+            return focused == session.id
+        }
+        return await matches(jumpTarget: session.jumpTarget)
     }
 
     func matches(jumpTarget: JumpTarget?) async -> Bool {

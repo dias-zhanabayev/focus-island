@@ -241,9 +241,17 @@ struct FocusViewLogicTests {
     func onboardingCompletionAndInput() {
         #expect(OnboardingCard.canAddTask(text: "  ") == false)
         #expect(OnboardingCard.canAddTask(text: " Задача ") == true)
-        #expect(OnboardingCard.allDone(automationOpened: true, taskAdded: true))
-        #expect(!OnboardingCard.allDone(automationOpened: true, taskAdded: false))
-        #expect(OnboardingCard.automationSettingsURL == "x-apple.systempreferences:com.apple.preference.security?Privacy_Automation")
+        #expect(OnboardingCard.stage(hooksInstalled: nil, taskAdded: false) == .connect)
+        #expect(OnboardingCard.stage(hooksInstalled: false, taskAdded: false) == .connect)
+        #expect(OnboardingCard.stage(hooksInstalled: true, taskAdded: false) == .firstTask)
+        #expect(OnboardingCard.stage(hooksInstalled: true, taskAdded: true) == .started)
+        #expect(OnboardingCard.startedToast(sessionCount: 2) == "Задача в работе · 2 сессии внутри")
+        #expect(OnboardingCard.candidateDetail(cwd: nil, appName: nil) == "сессия Claude")
+        #expect(OnboardingCard.candidateDetail(cwd: "/tmp/api", appName: "Ghostty") == "/tmp/api · Ghostty")
+        #expect(OnboardingCard.shortPath(NSHomeDirectory() + "/work/api") == "~/work/api")
+        #expect(OnboardingCard.launchCommand(projectPath: nil) == "claude")
+        #expect(OnboardingCard.launchCommand(projectPath: NSHomeDirectory() + "/work/api") == "cd ~/work/api && claude")
+        #expect(OnboardingCard.launchCommand(projectPath: "/tmp/my api") == "cd \"/tmp/my api\" && claude")
     }
 
     @Test
@@ -309,7 +317,7 @@ struct FocusViewLogicTests {
 
     @Test
     func hubRowActions() {
-        #expect(SessionHubView.actionTitle(group: .waiting) == "Перейти")
+        #expect(SessionHubView.actionTitle(group: .waiting) == "Ответить")
         #expect(SessionHubView.actionTitle(group: .review) == "Посмотреть")
         #expect(SessionHubView.actionTitle(group: .running) == "Перейти")
         #expect(SessionHubView.actionTitle(group: .idle) == "Перейти")
@@ -487,8 +495,8 @@ struct FocusViewLogicTests {
         let progress = PlanProgress(completed: 2, total: 7, currentTitle: nil)
         #expect(TaskDetailView.liveSubtitle(progress: progress, group: .running) == "сейчас · шаг 3 из 7")
         #expect(TaskDetailView.liveSubtitle(progress: nil, group: .running) == "сейчас")
-        #expect(TaskDetailView.liveSubtitle(progress: nil, group: .waiting) == "ждёт тебя")
-        #expect(TaskDetailView.liveSubtitle(progress: nil, group: .review) == "готово, не просмотрено")
+        #expect(TaskDetailView.liveSubtitle(progress: nil, group: .waiting) == "ждёт ответа")
+        #expect(TaskDetailView.liveSubtitle(progress: nil, group: .review) == "закончил, не просмотрено")
     }
 
     @Test

@@ -80,4 +80,32 @@ struct ForegroundTerminalSessionProbeTests {
 
         #expect(!matches)
     }
+
+    func desktopSession(_ id: String) -> AgentSession {
+        AgentSession(
+            id: id, title: id, tool: .claudeCode, origin: .live, attachmentState: .attached, phase: .completed, summary: "", updatedAt: .now,
+            jumpTarget: JumpTarget(terminalApp: ClaudeDesktopSessionLocator.terminalAppName, workspaceName: "api", paneTitle: "")
+        )
+    }
+
+    @Test
+    func matchesClaudeDesktopSessionThatIsOpen() async {
+        let probe = ForegroundTerminalSessionProbe(
+            frontmostBundleIdentifierProvider: { ForegroundTerminalSessionProbe.claudeDesktopBundleIdentifier },
+            appleScriptRunner: { _ in "" },
+            focusedDesktopSessionProvider: { "open" }
+        )
+        #expect(await probe.matches(session: desktopSession("open")))
+        #expect(!(await probe.matches(session: desktopSession("other"))))
+    }
+
+    @Test
+    func claudeDesktopSessionIsNotOnScreenWhenAnotherAppIsFrontmost() async {
+        let probe = ForegroundTerminalSessionProbe(
+            frontmostBundleIdentifierProvider: { "com.mitchellh.ghostty" },
+            appleScriptRunner: { _ in "" },
+            focusedDesktopSessionProvider: { "open" }
+        )
+        #expect(!(await probe.matches(session: desktopSession("open"))))
+    }
 }

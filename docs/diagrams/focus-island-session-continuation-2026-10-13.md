@@ -1,6 +1,6 @@
 # Focus Island session continuation — sequence diagram
 
-Covers a Claude.app session that comes back with a new Claude Code session ID (spec addendum P23). Derived from `FocusCoordinator.sessionsDidChange`, `refreshSessionLabels`, `adoptContinuation` and `ClaudeDesktopSessionLocator.sessions(forCLISessionIDs:)`.
+Covers a Claude.app session that comes back with a new Claude Code session ID (spec addendum P23). Derived from `FocusCoordinator.sessionsDidChange`, `refreshSessionLabels`, `adoptContinuation`, `endSupersededSessions`, `AppModel.dismissSession` and `ClaudeDesktopSessionLocator.sessions(forCLISessionIDs:)`.
 
 ```mermaid
 sequenceDiagram
@@ -11,6 +11,7 @@ sequenceDiagram
     participant Coord as FocusCoordinator
     participant Locator as ClaudeDesktopSessionLocator
     participant History as SessionHistory
+    participant App as AppModel
 
     ClaudeApp->>ClaudeApp: respawn CLI, old ID into priorCliSessionIds
     ClaudeApp->>Hook: SessionStart with new ID
@@ -23,6 +24,10 @@ sequenceDiagram
     Coord->>Locator: sessions(forCLISessionIDs: [new])
     Locator-->>Coord: title, status, priorCLISessionIDs
     Coord->>Coord: adoptContinuation(new, priors)
+    opt prior IDs still live (restored from registry)
+        Coord->>App: endSupersededSessions(prior IDs)
+        App->>App: dismissSession + persist registry
+    end
     alt already checked or new ID has a task
         Note over Coord: nothing changes
     else latest prior ID has a task

@@ -92,6 +92,10 @@ enum FocusEars {
         return .pomodoro(ear, base: .waitingOutside(waitingOutside, quiet: true))
     }
 
+    nonisolated static func yourTurnText(_ count: Int) -> String {
+        "\(count) твой ход"
+    }
+
     nonisolated static func waitingOutsideText(_ count: Int, quiet: Bool) -> String {
         quiet ? "\(count)" : "\(count) ждут"
     }
@@ -376,10 +380,13 @@ struct V6LeftSlotView: View {
                         .foregroundStyle(FocusStyle.waitingText)
                 }
                 if done > 0 {
-                    Text("✓ \(done)")
-                        .font(.system(size: 11, weight: .medium))
-                        .foregroundStyle(FocusStyle.done)
+                    Circle()
+                        .fill(FocusStyle.link)
+                        .frame(width: 6, height: 6)
                         .padding(.leading, 4)
+                    Text(FocusEars.yourTurnText(done))
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(FocusStyle.link)
                 }
             }
             .lineLimit(1)
@@ -434,7 +441,7 @@ struct V6LeftSlotView: View {
                 width += 16 + CGFloat("\(waiting) ждёт".count) * 6.5
             }
             if done > 0 {
-                width += 8 + CGFloat("✓ \(done)".count) * 6.5
+                width += 14 + CGFloat(FocusEars.yourTurnText(done).count) * 6.5
             }
             return min(V6RightSlotView.alertMaxWidth, width)
         }

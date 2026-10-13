@@ -187,7 +187,8 @@ struct TaskDetailView: View {
             progress: row.group == .running ? row.progress : nil,
             actionTitle: "Перейти",
             enabled: true,
-            showsDone: SessionDoneFormat.showsDoneButton(group: row.group),
+            doneGroup: SessionDoneFormat.showsDoneCheck(group: row.group) ? row.group : nil,
+            status: SessionStatusKind.of(row.group),
             sessionID: row.id
         ) {
             focus.requestJump(sessionID: row.id)
@@ -216,16 +217,20 @@ struct TaskDetailView: View {
             progress: nil,
             actionTitle: "Продолжить",
             enabled: resumable.contains(record.id),
-            showsDone: true,
+            doneGroup: .idle,
             sessionID: record.id
         ) {
             focus.resume(record: record)
         }
     }
 
-    private func sessionRow(dot: AnyView, title: String, subtitle: String, progress: PlanProgress?, actionTitle: String, enabled: Bool, showsDone: Bool = false, sessionID: String, action: @escaping () -> Void) -> some View {
+    private func sessionRow(dot: AnyView, title: String, subtitle: String, progress: PlanProgress?, actionTitle: String, enabled: Bool, doneGroup: HubGroup? = nil, status: SessionStatusKind? = nil, sessionID: String, action: @escaping () -> Void) -> some View {
         HStack(spacing: 10) {
-            dot
+            if let doneGroup {
+                SessionDoneCheck(group: doneGroup) { focus.markSessionDone(sessionID: sessionID) }
+            } else {
+                dot
+            }
             VStack(alignment: .leading, spacing: 1) {
                 Text(title).font(.system(size: 13)).foregroundStyle(FocusStyle.primaryText).lineLimit(1)
                 Text(subtitle).font(FocusStyle.secondaryFont).foregroundStyle(FocusStyle.secondaryText).lineLimit(1)
@@ -234,8 +239,8 @@ struct TaskDetailView: View {
             if let progress {
                 PlanProgressBar(progress: progress, width: 70)
             }
-            if showsDone {
-                SessionDoneButton { focus.markSessionDone(sessionID: sessionID) }
+            if let status {
+                SessionStatusBadge(kind: status)
             }
             Button(actionTitle, action: action)
                 .buttonStyle(FocusButtonStyle(kind: .secondary))
@@ -419,9 +424,9 @@ struct TaskDetailView: View {
     nonisolated static func liveSubtitle(progress: PlanProgress?, group: HubGroup) -> String {
         switch group {
         case .waiting:
-            return "ждёт тебя"
+            return "ждёт ответа"
         case .review:
-            return "готово, не просмотрено"
+            return "закончил, не просмотрено"
         default:
             guard let progress else { return "сейчас" }
             return "сейчас · шаг \(min(progress.total, progress.completed + 1)) из \(progress.total)"

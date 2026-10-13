@@ -103,6 +103,10 @@ struct SessionHubView: View {
             if let notice = focus.doneSessionNotice {
                 DoneSessionNoticeBanner(notice: notice) { focus.reopenDoneSession(sessionID: notice.sessionID) }
             }
+            if let notice = focus.boundSessionNotice {
+                BoundSessionNoticeBanner { focus.unbindAutoBoundSession() }
+                    .id(notice.sessionID)
+            }
             FocusSectionCaption(Self.focusBlockCaption(rows.count))
             if focus.showsAllDoneSuggestion(taskID: task.id) {
                 AllSessionsDoneCard(
@@ -334,6 +338,10 @@ struct SessionHubView: View {
 
     private func rowView(_ row: HubRow, primaryID: String?, isHere: Bool = false, unbindable: Bool = false) -> some View {
         HStack(spacing: 12) {
+            if unbindable, SessionDoneFormat.showsDoneCheck(group: row.group) {
+                SessionDoneCheck(group: row.group) { focus.markSessionDone(sessionID: row.id) }
+                    .padding(.trailing, -6)
+            }
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 8) {
                     Text(unbindable ? (focus.sessionLabel(row.id) ?? row.title) : row.title)
@@ -353,15 +361,16 @@ struct SessionHubView: View {
             if row.group == .running, let progress = row.progress {
                 PlanProgressBar(progress: progress, width: 90)
             }
-            if unbindable, SessionDoneFormat.showsDoneButton(group: row.group) {
-                SessionDoneButton { focus.markSessionDone(sessionID: row.id) }
+            if unbindable, let status = SessionStatusKind.of(row.group) {
+                SessionStatusBadge(kind: status)
             }
             buttons(row, primaryID: primaryID)
             if unbindable, let taskID = row.taskID {
                 SessionMoreMenu(focus: focus, sessionID: row.id, taskID: taskID)
             }
         }
-        .padding(.horizontal, 12)
+        .padding(.leading, unbindable && SessionDoneFormat.showsDoneCheck(group: row.group) ? 6 : 12)
+        .padding(.trailing, 12)
         .padding(.vertical, 10)
         .background(rowBackground(row.group))
         .overlay {
@@ -499,7 +508,8 @@ struct SessionHubView: View {
 
     nonisolated static func actionTitle(group: HubGroup) -> String {
         switch group {
-        case .waiting, .running, .idle: "Перейти"
+        case .waiting: "Ответить"
+        case .running, .idle: "Перейти"
         case .review: "Посмотреть"
         case .unbound: "Привязать"
         case .parked, .done: "Вернуть"

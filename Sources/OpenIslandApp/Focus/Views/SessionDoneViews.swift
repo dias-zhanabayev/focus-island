@@ -2,16 +2,92 @@ import FocusCore
 import SwiftUI
 
 enum SessionDoneFormat {
-    nonisolated static func showsDoneButton(group: HubGroup) -> Bool {
-        group == .idle || group == .review
+    nonisolated static func showsDoneCheck(group: HubGroup) -> Bool {
+        switch group {
+        case .waiting, .review, .running, .idle: true
+        case .unbound, .parked, .done: false
+        }
     }
 
+    nonisolated static func confirmsDone(group: HubGroup) -> Bool {
+        group == .running || group == .waiting
+    }
+
+    nonisolated static let doneHelp = "Завершить сессию: она сделала своё в задаче. Уйдёт в «Завершённые», время и история останутся. Напишешь в неё — вернётся."
+
     nonisolated static func sectionTitle(count: Int, expanded: Bool) -> String {
-        "Готовые · \(count) " + (expanded ? "▾" : "▸")
+        "Завершённые · \(count) " + (expanded ? "▾" : "▸")
     }
 
     nonisolated static func noticeText(_ title: String) -> String {
-        "«\(title)» готова"
+        "«\(title)» завершена"
+    }
+}
+
+enum SessionStatusKind: Equatable {
+    case running
+    case waiting
+    case yourTurn
+    case ended
+    case parked
+
+    nonisolated static func of(_ group: HubGroup) -> SessionStatusKind? {
+        switch group {
+        case .running: .running
+        case .waiting: .waiting
+        case .review, .idle: .yourTurn
+        case .done: .ended
+        case .parked: .parked
+        case .unbound: nil
+        }
+    }
+
+    nonisolated var title: String {
+        switch self {
+        case .running: "Работает"
+        case .waiting: "Ждёт ответа"
+        case .yourTurn: "Твой ход"
+        case .ended: "Завершена"
+        case .parked: "На паузе"
+        }
+    }
+
+    var color: Color {
+        switch self {
+        case .running: FocusStyle.working
+        case .waiting: FocusStyle.waitingText
+        case .yourTurn: FocusStyle.link
+        case .ended, .parked: FocusStyle.secondaryText
+        }
+    }
+
+    var showsDot: Bool {
+        switch self {
+        case .running, .waiting, .yourTurn: true
+        case .ended, .parked: false
+        }
+    }
+}
+
+struct SessionStatusBadge: View {
+    let kind: SessionStatusKind
+
+    var body: some View {
+        HStack(spacing: 6) {
+            if kind.showsDot {
+                Circle().fill(kind.color).frame(width: 7, height: 7)
+            }
+            Text(kind.title)
+                .font(.system(size: 11.5, weight: .semibold))
+                .foregroundStyle(kind.color)
+                .lineLimit(1)
+        }
+        .padding(.horizontal, 9)
+        .frame(height: 22)
+        .background(Capsule().fill(kind.showsDot ? kind.color.opacity(0.15) : Color.white.opacity(0.08)))
+        .fixedSize()
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Статус: \(kind.title)")
     }
 }
 
@@ -21,15 +97,62 @@ struct DoneSessionItem: Identifiable, Equatable {
     let detail: String?
 }
 
-struct SessionDoneButton: View {
+struct SessionDoneCheck: View {
+    let group: HubGroup
+    let action: () -> Void
+    @State private var hovering = false
+    @State private var confirming = false
+
+    var body: some View {
+        Button {
+            if SessionDoneFormat.confirmsDone(group: group) {
+                confirming = true
+            } else {
+                action()
+            }
+        } label: {
+            ZStack {
+                Circle()
+                    .strokeBorder(hovering ? FocusStyle.working : Color.white.opacity(0.35), lineWidth: 1.5)
+                if hovering {
+                    Image(systemName: "checkmark")
+                        .font(.system(size: 9, weight: .heavy))
+                        .foregroundStyle(FocusStyle.working)
+                }
+            }
+            .frame(width: 20, height: 20)
+            .frame(width: 28, height: 28)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .onHover { hovering = $0 }
+        .help(SessionDoneFormat.doneHelp)
+        .accessibilityLabel("Завершить сессию")
+        .confirmationDialog("Claude ещё не закончил. Всё равно завершить сессию?", isPresented: $confirming) {
+            Button("Завершить", action: action)
+            Button("Отмена", role: .cancel) {}
+        }
+    }
+}
+
+struct SessionReopenCheck: View {
     let action: () -> Void
 
     var body: some View {
         Button(action: action) {
-            Label("Готово", systemImage: "checkmark")
+            ZStack {
+                Circle().fill(FocusStyle.working)
+                Image(systemName: "checkmark")
+                    .font(.system(size: 9, weight: .heavy))
+                    .foregroundStyle(Color(focusHex: 0x08240F))
+            }
+            .frame(width: 20, height: 20)
+            .frame(width: 28, height: 28)
+            .contentShape(Rectangle())
         }
-        .buttonStyle(FocusButtonStyle(kind: .done, height: 28))
-        .accessibilityLabel("Сессия готова")
+        .buttonStyle(.plain)
+        .help("Вернуть сессию в активные")
+        .accessibilityLabel("Вернуть сессию")
     }
 }
 
@@ -40,7 +163,7 @@ struct SessionMoreMenu: View {
 
     var body: some View {
         Menu {
-            Button("✓ Сессия готова") { focus.markSessionDone(sessionID: sessionID) }
+            Button("Завершить сессию") { focus.markSessionDone(sessionID: sessionID) }
             Button("Отвязать от задачи") { focus.bind(sessionID: sessionID, taskID: nil) }
             let targets = focus.moveTargets(excludingTaskID: taskID)
             if !targets.isEmpty {
@@ -88,6 +211,29 @@ struct DoneSessionNoticeBanner: View {
     }
 }
 
+struct BoundSessionNoticeBanner: View {
+    let onUnbind: () -> Void
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "checkmark")
+                .font(.system(size: 11, weight: .bold))
+                .foregroundStyle(FocusStyle.working)
+                .accessibilityHidden(true)
+            Text("Новая сессия в задаче")
+                .font(FocusStyle.secondaryFont)
+                .foregroundStyle(FocusStyle.tagText)
+                .lineLimit(1)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            Button("Отвязать", action: onUnbind)
+                .buttonStyle(FocusButtonStyle(kind: .quiet, height: 24, horizontalPadding: 6))
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 6)
+        .background(RoundedRectangle(cornerRadius: FocusStyle.smallRadius).fill(FocusStyle.working.opacity(0.12)))
+    }
+}
+
 struct AllSessionsDoneCard: View {
     let onClose: () -> Void
     let onDismiss: () -> Void
@@ -99,7 +245,7 @@ struct AllSessionsDoneCard: View {
                 .foregroundStyle(FocusStyle.working)
                 .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 2) {
-                Text("Все сессии задачи готовы")
+                Text("Все сессии задачи завершены")
                     .font(.system(size: 13, weight: .semibold))
                     .foregroundStyle(FocusStyle.primaryText)
                 Text("Закрыть задачу или открыть новую сессию?")
@@ -152,35 +298,30 @@ struct DoneSessionsSection: View {
     }
 
     private func row(_ item: DoneSessionItem) -> some View {
-        HStack(spacing: 10) {
-            Image(systemName: "checkmark")
-                .font(.system(size: 10, weight: .bold))
-                .foregroundStyle(FocusStyle.working)
-                .accessibilityHidden(true)
-            HStack(spacing: 4) {
+        HStack(spacing: 8) {
+            SessionReopenCheck { onReopen(item.id) }
+            VStack(alignment: .leading, spacing: 1) {
                 Text(item.title)
-                    .font(.system(size: 13))
+                    .font(.system(size: 13, weight: .semibold))
                     .foregroundStyle(FocusStyle.secondaryText)
+                    .strikethrough(true, color: Color.white.opacity(0.35))
                 if let detail = item.detail {
-                    Text("· " + detail)
+                    Text(detail)
                         .font(FocusStyle.secondaryFont)
                         .foregroundStyle(FocusStyle.captionText)
                 }
             }
             .lineLimit(1)
             .frame(maxWidth: .infinity, alignment: .leading)
-            Button("Вернуть") { onReopen(item.id) }
-                .buttonStyle(FocusButtonStyle(kind: .quiet, height: 26, horizontalPadding: 8))
+            SessionStatusBadge(kind: .ended)
             if let onOpen {
-                Button("Открыть") { onOpen(item.id) }
-                    .buttonStyle(FocusButtonStyle(kind: .secondary, height: 26))
+                Button("Перейти") { onOpen(item.id) }
+                    .buttonStyle(FocusButtonStyle(kind: .quiet, height: 26, horizontalPadding: 8))
             }
         }
-        .padding(.horizontal, 12)
+        .padding(.leading, 4)
+        .padding(.trailing, 10)
         .padding(.vertical, 6)
-        .background(
-            RoundedRectangle(cornerRadius: FocusStyle.smallRadius)
-                .stroke(Color.white.opacity(0.14), style: StrokeStyle(lineWidth: 1, dash: [4, 3]))
-        )
+        .background(RoundedRectangle(cornerRadius: FocusStyle.smallRadius).fill(Color.white.opacity(0.03)))
     }
 }

@@ -259,17 +259,12 @@ struct FocusCoordinatorTriggerTests {
         #expect(c.card == .onboarding)
         #expect(c.hooksInstalled == true)
 
-        #expect(!c.onboardingAutomationOpened)
         #expect(!c.onboardingTaskAdded)
-        c.markOnboardingAutomationOpened()
         c.markOnboardingTaskAdded()
-        #expect(c.onboardingAutomationOpened)
         #expect(c.onboardingTaskAdded)
-        #expect(h.defaults.bool(forKey: "focus.onboarding.automationOpened"))
         #expect(h.defaults.bool(forKey: "focus.onboarding.taskAdded"))
 
         let reopened = try make(defaults: h.defaults)
-        #expect(reopened.coordinator.onboardingAutomationOpened)
         #expect(reopened.coordinator.onboardingTaskAdded)
 
         c.dismissOnboarding(now: t0.addingTimeInterval(2))
@@ -317,7 +312,6 @@ struct FocusCoordinatorTriggerTests {
         let c = h.coordinator
         c.setHooksInstalled(false, now: t0)
         c.setHooksInstalled(true, now: t0.addingTimeInterval(1))
-        c.markOnboardingAutomationOpened()
         c.overlayDidClose(now: t0.addingTimeInterval(2))
         #expect(c.card == .onboarding)
 

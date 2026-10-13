@@ -105,7 +105,6 @@ final class FocusCoordinator {
     static let todaySummaryInterval: TimeInterval = 60
     static let clipboardToast = "Промпт в буфере — вставь ⌘V"
     static let stalledBadgeMinutes = 10
-    static let onboardingAutomationOpenedKey = "focus.onboarding.automationOpened"
     static let onboardingTaskAddedKey = "focus.onboarding.taskAdded"
     static let onboardingDismissedKey = "focus.onboarding.dismissed"
     static let onboardingPresentedKey = "focus.onboarding.presented"
@@ -140,6 +139,7 @@ final class FocusCoordinator {
     private(set) var sessionLabels: [String: String] = [:]
     private(set) var sessionStatuses: [String: String] = [:]
     @ObservationIgnored private var continuationChecked: Set<String> = []
+    @ObservationIgnored var endSupersededSessions: (([String]) -> Void)?
     @ObservationIgnored var lookupSessionLabels: (@Sendable (Set<String>) async -> [String: SessionLabel])?
     @ObservationIgnored private var labelLookupInFlight = false
     @ObservationIgnored private var labelLookedUpAt: [String: Date] = [:]
@@ -157,7 +157,9 @@ final class FocusCoordinator {
     private(set) var waitingOutsideExpanded = false
     private(set) var focusElapsedMinutes: Int?
     private(set) var hooksInstalled: Bool?
-    private(set) var onboardingAutomationOpened: Bool
+    private(set) var firstTaskWaitingID: String?
+    private(set) var boundSessionNotice: DoneSessionNotice?
+    @ObservationIgnored private var boundSessionShownAt: Date?
     private(set) var onboardingTaskAdded: Bool
     private(set) var onboardingDismissed: Bool
     let storeOutcome: FocusStoreOpenOutcome
@@ -264,7 +266,6 @@ final class FocusCoordinator {
         self.dayPlans = DayPlanStore(store: store)
         self.activityLog = ActivityLog(store: store)
         self.pomodoroStore = PomodoroStore(store: store)
-        self.onboardingAutomationOpened = defaults.bool(forKey: Self.onboardingAutomationOpenedKey)
         self.onboardingTaskAdded = defaults.bool(forKey: Self.onboardingTaskAddedKey)
         self.onboardingDismissed = defaults.bool(forKey: Self.onboardingDismissedKey)
         self.defaults = defaults
@@ -442,6 +443,7 @@ final class FocusCoordinator {
             changed = true
         }
 
+        var autoBound = false
         for session in relevant {
             let observation = SessionObservation(session: session)
             let isNew = previousPhases[session.id] == nil && lastObservations[session.id] == nil
@@ -456,7 +458,12 @@ final class FocusCoordinator {
                now.timeIntervalSince(session.firstSeenAt) < Self.bindingPromptWindow,
                (try? history.session(id: session.id))?.taskId == nil,
                !pendingBindingSessionIDs.contains(session.id) {
-                pendingBindingSessionIDs.append(session.id)
+                if firstTaskWaitingID != nil, autoBindToWaitingTask(sessionID: session.id, cwd: session.jumpTarget?.workingDirectory, now: now) {
+                    changed = true
+                    autoBound = true
+                } else {
+                    pendingBindingSessionIDs.append(session.id)
+                }
             }
             let previous = previousPhases[session.id]
             if session.phase == .completed && previous != .completed {
@@ -508,6 +515,9 @@ final class FocusCoordinator {
         if changed {
             reloadLiveRecords()
         }
+        if autoBound {
+            reload()
+        }
         if liveSetChanged {
             attempt { try promptQueue.discardForEndedSessions() }
             workRevision += 1
@@ -549,6 +559,10 @@ final class FocusCoordinator {
         if let shownAt = doneSessionShownAt, now.timeIntervalSince(shownAt) >= Self.closedTaskLifetime {
             doneSessionNotice = nil
             doneSessionShownAt = nil
+        }
+        if let shownAt = boundSessionShownAt, now.timeIntervalSince(shownAt) >= Self.closedTaskLifetime {
+            boundSessionNotice = nil
+            boundSessionShownAt = nil
         }
         handlePomodoroExpiry(now: now)
         refreshPomodoroSnapshot(now: now)
@@ -1610,6 +1624,7 @@ final class FocusCoordinator {
         syncSessionSpans(latestSessions, now: now)
         refreshHub(now: now)
         closeResolvedReturned(now: now)
+        closeResolvedReturned(now: now)
     }
 
     func frontmostDidChange(_ sample: FrontmostSample) {
@@ -1770,6 +1785,9 @@ final class FocusCoordinator {
                 if let status = label.status, self.sessionStatuses[id] != status { self.sessionStatuses[id] = status }
                 self.adoptContinuation(sessionID: id, priorSessionIDs: label.priorSessionIDs, now: now)
             }
+            let liveIDs = Set(self.latestSessions.map(\.id))
+            let superseded = Set(found.values.flatMap(\.priorSessionIDs)).subtracting(found.keys).intersection(liveIDs)
+            if !superseded.isEmpty { self.endSupersededSessions?(superseded.sorted()) }
             self.refreshSessionLabels(now: now)
         }
     }
@@ -1918,7 +1936,7 @@ final class FocusCoordinator {
     }
 
     private var onboardingPending: Bool {
-        !onboardingDismissed && !(onboardingAutomationOpened && onboardingTaskAdded)
+        !onboardingDismissed && !onboardingTaskAdded
     }
 
     func dismissOnboarding(now: Date = .now) {
@@ -1930,11 +1948,89 @@ final class FocusCoordinator {
         }
     }
 
-    func markOnboardingAutomationOpened() {
-        defaults.set(true, forKey: Self.onboardingAutomationOpenedKey)
-        if !onboardingAutomationOpened {
-            onboardingAutomationOpened = true
+    func firstTaskCandidates() -> [FirstTaskCandidate] {
+        hubRows
+            .filter { $0.taskID == nil && !$0.group.isSettled }
+            .sorted { $0.since > $1.since }
+            .map { row in
+                FirstTaskCandidate(
+                    id: row.id,
+                    title: Self.firstTaskTitle(
+                        label: sessionLabel(row.id),
+                        prompt: (try? history.session(id: row.id))?.firstPrompt ?? session(row.id)?.claudeMetadata?.initialUserPrompt,
+                        projectName: row.projectName
+                    ),
+                    cwd: sessionCWD(row.id),
+                    appName: session(row.id)?.jumpTarget?.terminalApp,
+                    group: row.group
+                )
+            }
+    }
+
+    nonisolated static func firstTaskTitle(label: String?, prompt: String?, projectName: String?) -> String {
+        if let label = label?.trimmingCharacters(in: .whitespacesAndNewlines), !label.isEmpty {
+            return label
         }
+        if let prompt {
+            let line = prompt.split(whereSeparator: \.isNewline).first.map(String.init) ?? prompt
+            let collapsed = line.split(whereSeparator: \.isWhitespace).joined(separator: " ")
+            if !collapsed.isEmpty {
+                return collapsed.count > firstTaskTitleLimit ? String(collapsed.prefix(firstTaskTitleLimit)) + "…" : collapsed
+            }
+        }
+        if let projectName, !projectName.isEmpty {
+            return projectName
+        }
+        return "Сессия Claude"
+    }
+
+    nonisolated static let firstTaskTitleLimit = 60
+    nonisolated static let firstTaskSuggestionLimit = 3
+
+    nonisolated static func firstTaskPreselection(candidates: [FirstTaskCandidate], anchorID: String?) -> Set<String> {
+        let anchor = candidates.first { $0.id == anchorID } ?? candidates.first
+        guard let anchor else { return [] }
+        guard let cwd = anchor.cwd else { return [anchor.id] }
+        return Set(candidates.filter { $0.id == anchor.id || $0.cwd == cwd }.map(\.id))
+    }
+
+    @discardableResult
+    func startFirstTask(title: String, sessionIDs: [String], criterion: String?, now: Date = .now) -> String? {
+        let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        let projectPath = sessionIDs.lazy.compactMap { self.sessionCWD($0) }.first
+        guard let task = try? boardService.createTask(title: trimmed, column: .inProgress, projectPath: projectPath, now: now) else { return nil }
+        reload()
+        if let criterion = criterion?.trimmingCharacters(in: .whitespacesAndNewlines), !criterion.isEmpty {
+            attempt { _ = try criteriaService.add(taskID: task.id, text: criterion, now: now) }
+        }
+        firstTaskWaitingID = sessionIDs.isEmpty ? task.id : nil
+        markOnboardingTaskAdded()
+        startTask(taskID: task.id, sessionIDs: sessionIDs, focusMinutes: nil, now: now)
+        return task.id
+    }
+
+    func unbindAutoBoundSession() {
+        guard let notice = boundSessionNotice else { return }
+        boundSessionNotice = nil
+        boundSessionShownAt = nil
+        bind(sessionID: notice.sessionID, taskID: nil)
+    }
+
+    private func autoBindToWaitingTask(sessionID: String, cwd: String?, now: Date) -> Bool {
+        guard let taskID = firstTaskWaitingID, var task = board.task(id: taskID), task.boardColumn == .inProgress else {
+            firstTaskWaitingID = nil
+            return false
+        }
+        attempt { try boardService.bindSession(sessionID: sessionID, toTaskID: taskID, now: now) }
+        if (task.projectPath ?? "").isEmpty, let cwd, !cwd.isEmpty {
+            task.projectPath = cwd
+            attempt { try boardService.updateTask(task, now: now) }
+        }
+        firstTaskWaitingID = nil
+        boundSessionNotice = DoneSessionNotice(sessionID: sessionID, title: task.title)
+        boundSessionShownAt = now
+        return true
     }
 
     func markOnboardingTaskAdded() {
@@ -2394,6 +2490,14 @@ struct BindableSession: Equatable, Identifiable, Sendable {
     let isSameProject: Bool
     let defaultSelected: Bool
     var isBound = false
+}
+
+struct FirstTaskCandidate: Identifiable, Equatable, Sendable {
+    let id: String
+    let title: String
+    let cwd: String?
+    let appName: String?
+    let group: HubGroup
 }
 
 struct DoneSessionNotice: Equatable, Sendable {
