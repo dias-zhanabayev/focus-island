@@ -164,7 +164,7 @@ smoke_app="$smoke_dir/$(basename "$bundle_dir")"
 smoke_binary="$smoke_app/Contents/MacOS/OpenIslandApp"
 if [[ -x "$smoke_binary" ]]; then
     # Launch and give it a few seconds — if it crashes, the pid disappears.
-    "$smoke_binary" &
+    OPEN_ISLAND_HARNESS_START_BRIDGE=false "$smoke_binary" &
     smoke_pid=$!
     sleep 3
     if kill -0 "$smoke_pid" 2>/dev/null; then

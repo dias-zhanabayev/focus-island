@@ -81,3 +81,4 @@ This index is the repository map for humans and coding agents. Read these files 
 - [docs/diagrams/focus-island-task-sessions-2026-10-11.md](./diagrams/focus-island-task-sessions-2026-10-11.md)
 - [docs/diagrams/focus-island-timer-lengths-2026-10-11.md](./diagrams/focus-island-timer-lengths-2026-10-11.md)
 - [docs/diagrams/focus-island-waiting-outside-2026-10-11.md](./diagrams/focus-island-waiting-outside-2026-10-11.md)
+- [docs/releases/v0.1.1.md](./releases/v0.1.1.md) — release notes v0.1.1

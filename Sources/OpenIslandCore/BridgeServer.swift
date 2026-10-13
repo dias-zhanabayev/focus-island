@@ -88,9 +88,23 @@ public final class BridgeServer: @unchecked Sendable {
         listeners.append(primaryListener)
     }
 
+    static func hasLiveListener(at url: URL) -> Bool {
+        guard FileManager.default.fileExists(atPath: url.path) else { return false }
+        let fd = socket(AF_UNIX, SOCK_STREAM, 0)
+        guard fd != -1 else { return false }
+        defer { close(fd) }
+        let connected = (try? withUnixSocketAddress(path: url.path) { address, length in
+            connect(fd, address, length) == 0
+        }) ?? false
+        return connected
+    }
+
     private func bindListener(at url: URL) throws -> Listener {
         let parentURL = url.deletingLastPathComponent()
         try FileManager.default.createDirectory(at: parentURL, withIntermediateDirectories: true)
+        if Self.hasLiveListener(at: url) {
+            throw BridgeTransportError.socketInUse
+        }
         try? FileManager.default.removeItem(at: url)
 
         let fd = socket(AF_UNIX, SOCK_STREAM, 0)
