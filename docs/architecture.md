@@ -2,24 +2,25 @@
 
 ## System Shape
 
-The project is a single Swift package with four targets:
+The project is a single Swift package. Focus Island logic lives in `FocusCore` (GRDB store, board, pomodoro, session history) and `OpenIslandApp/Focus` (coordinator and views); the island shell keeps its Open Island target names:
 
 | Target | Role |
 |---|---|
 | **OpenIslandApp** | SwiftUI + AppKit shell — menu bar extra, overlay panel (notch/top-bar), settings. Entry point: `OpenIslandApp.swift` with `AppModel` as the central `@Observable` state owner. |
 | **OpenIslandCore** | Shared library — models (`AgentSession`, `AgentEvent`, `SessionState`), bridge transport (Unix socket IPC with JSON line protocol), hook models/installers, transcript discovery, session persistence/registry. |
 | **OpenIslandHooks** | Lightweight CLI executable invoked by agent hooks. Reads hook payload from stdin, forwards to app bridge via Unix socket, writes blocking JSON to stdout only when island denies a `PreToolUse`. |
-| **OpenIslandSetup** | Installer CLI for managing `~/.codex/config.toml` and `hooks.json`. |
+| **OpenIslandSetup** | Installer CLI for the Claude Code hooks in `~/.claude/settings.json`. |
+| **FocusCore** | Focus Island domain: tasks, task sessions, pomodoro, activity spans, SQLite store in `~/Library/Application Support/FocusIsland/focus.sqlite`. |
 
 ## Data Flow
 
-### Hook-based agents (Codex, Claude Code, and forks)
+### Claude Code hooks
 
 ```
 Agent
   │  stdin: JSON payload
   ▼
-OpenIslandHooks CLI  (--source codex | --source claude | ...)
+OpenIslandHooks CLI  (--source claude)
   │  Unix socket
   ▼
 BridgeServer → AppModel → UI
@@ -29,12 +30,6 @@ OpenIslandHooks CLI
   │  stdout: JSON directive (only when a response is needed)
   ▼
 Agent
-```
-
-### Plugin-based agents (OpenCode)
-
-```
-OpenCode → JS plugin (~/.config/opencode/plugins/) → Unix socket → BridgeServer → AppModel → UI
 ```
 
 ### Session discovery (on launch)
@@ -84,6 +79,7 @@ Terminal focus restoration is implemented per-terminal:
 | WezTerm | CLI pane targeting |
 | iTerm2 | AppleScript session/TTY probe |
 | tmux (multiplexer) | switch-client → select-window → select-pane |
+| Claude.app (Code tab) | `claude://code/continue?session=local_…` deep link, id resolved from Claude's session files |
 
 The hook helper enriches payloads with terminal-local hints (terminal app, TTY, session ID, window title) from environment inspection at hook invocation time.
 
@@ -93,7 +89,6 @@ The hook helper enriches payloads with terminal-local hints (terminal app, TTY, 
 - AppKit for panel behavior, status item control, and activation policy edge cases
 - Unix domain sockets for IPC
 - JSON event envelopes for debugging and adapter simplicity
-- Sparkle for auto-updates
 
 ## Engineering Rules
 

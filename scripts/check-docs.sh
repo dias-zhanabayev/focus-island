@@ -7,14 +7,9 @@ cd "$repo_root"
 
 required_files=(
     "README.md"
-    "AGENTS.md"
     "docs/index.md"
-    "docs/product.md"
     "docs/architecture.md"
     "docs/quality.md"
-    "docs/worktree-workflow.md"
-    "docs/exec-plans/README.md"
-    "docs/references/README.md"
 )
 
 for file in "${required_files[@]}"; do

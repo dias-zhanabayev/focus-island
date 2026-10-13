@@ -69,4 +69,3 @@ Every meaningful round should leave behind:
 - CI does not run the GUI smoke step yet because the current baseline avoids depending on a window-server-backed runner path.
 - The harness captures milestone timings and log summaries, but it does not yet provide a queryable log/metrics/trace stack.
 - The current accessibility assertions are still scenario-specific rather than full golden snapshots.
-- We do not yet have execution-plan lifecycle automation beyond the directory conventions defined in [docs/exec-plans/README.md](./exec-plans/README.md).

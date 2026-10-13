@@ -2,10 +2,9 @@
 
 ## Project
 
-Open Island — native macOS companion for AI coding agents. Sits in the notch / top bar, monitors local sessions, surfaces permission and question events, and jumps back to the right terminal/IDE. Local-first, no server.
+Focus Island — native macOS notch companion for Claude Code: one task in focus, its sessions, a pomodoro timer, a task board. Monitors local sessions, surfaces permission and question events, and jumps back to the right terminal or Claude.app session. Local-first, no server.
 
-- **Target product** (closed-source baseline): https://vibeisland.app/
-- **OSS reference** (design ideas only, not a spec): https://github.com/farouqaldori/claude-island
+Forked from Open Island (GPL-3.0, keep `LICENSE`). Swift targets keep their `OpenIsland*` names: the hooks binary path is written into `~/.claude/settings.json`, so renaming them needs a migration.
 
 ## Architecture
 
@@ -31,9 +30,9 @@ swift build -c release --product OpenIslandHooks
 
 For Xcode: open `Package.swift`.
 
-## Dev app (Open Island Dev.app)
+## Dev app (Focus Island.app)
 
-`~/Applications/Open Island Dev.app` is a wrapper around the repo build, not a separate product.
+`~/Applications/Focus Island.app` is a wrapper around the repo build; releases install to `/Applications/Focus Island.app`.
 
 - **Launch**: `zsh scripts/launch-dev-app.sh` — never just `open -na`, the bundle goes stale.
 - **One-time signing**: `zsh scripts/setup-dev-signing.sh` — without this every rebuild changes cdhash and silently invalidates TCC grants (Accessibility, Automation). Required for any AX-touching feature (precision jump, keystroke/menu injection).
@@ -43,7 +42,7 @@ For Xcode: open `Package.swift`.
 
 - **Never edit in the main worktree.** Use `EnterWorktree` (preferred) or `git worktree add`, branched off latest local `main`.
 - Branch name matches topic: `feat/<topic>`, `fix/<topic>`. One coherent change per round.
-- Repo: private `dias-zhanabayev/focus-island` (`origin`). `upstream` is the original Open Island — never push there. `main` on `origin` is the release branch.
+- Repo: private `dias-zhanabayev/focus-island` (`origin`). Open Island upstream remote and tags were removed; never add them back or push there. `main` on `origin` is the release branch.
 - Conventional commit messages (`feat:`, `fix:`, `refactor:`, `docs:`, `chore:`). Never `--amend` unless asked.
 - After changes: run the matching verification (`swift build` / `swift test` / manual). If no check exists, say so in the summary and still commit.
 - Never `git reset --hard`, force-push, or overwrite user changes without explicit approval. If unexpected state appears, inspect — don't bulldoze.
@@ -80,6 +79,7 @@ The project is past MVP and welcomes new ideas and creative directions, but the 
 - `Sources/OpenIslandCore/SessionState.swift` — pure reducer
 - `Sources/OpenIslandCore/AgentEvent.swift` — event enum driving all transitions
 - `Sources/OpenIslandCore/BridgeTransport.swift` + `BridgeServer.swift` — socket protocol & dispatch
-- `Sources/OpenIslandCore/{Claude,Codex,Gemini,Kimi,Cursor}Hooks.swift` etc. — per-agent hook payload models
+- `Sources/OpenIslandCore/ClaudeHooks.swift` — Claude Code hook payload models
+- `Sources/OpenIslandApp/Focus/FocusCoordinator.swift`, `Sources/FocusCore/` — Focus Island logic
 - `Sources/OpenIslandHooks/main.swift` — hook CLI entry
-- `docs/product.md`, `docs/architecture.md`, `AGENTS.md` — design / working-agreement docs
+- `docs/architecture.md`, `docs/hooks.md`, `docs/superpowers/specs/` — architecture and Focus Island design docs
