@@ -554,6 +554,10 @@ final class AppModel {
                 }
             }.value
         }
+        focus.isSessionOnScreen = { [weak self] sessionID in
+            guard let self, self.suppressFrontmostNotifications, let session = self.state.session(id: sessionID) else { return false }
+            return await self.isNotificationSessionAlreadyFrontmost(session)
+        }
         focus.endSupersededSessions = { [weak self] sessionIDs in
             guard let self else { return }
             for id in sessionIDs { self.dismissSession(id) }

@@ -140,6 +140,8 @@ final class FocusCoordinator {
     private(set) var sessionStatuses: [String: String] = [:]
     @ObservationIgnored private var continuationChecked: Set<String> = []
     @ObservationIgnored var endSupersededSessions: (([String]) -> Void)?
+    @ObservationIgnored var isSessionOnScreen: ((String) async -> Bool)?
+    @ObservationIgnored private var onScreenChecks: Set<String> = []
     @ObservationIgnored var lookupSessionLabels: (@Sendable (Set<String>) async -> [String: SessionLabel])?
     @ObservationIgnored private var labelLookupInFlight = false
     @ObservationIgnored private var labelLookedUpAt: [String: Date] = [:]
@@ -527,7 +529,9 @@ final class FocusCoordinator {
         pendingReturnedSessionIDs.removeAll { !isReturnedStillRelevant($0) }
         for sessionID in finishedTurns where shouldPresentReturned(sessionID: sessionID, focusTaskID: focusTaskIDBefore) {
             deferredReturnedSessionIDs.remove(sessionID)
-            if !pendingReturnedSessionIDs.contains(sessionID) {
+            if let check = isSessionOnScreen {
+                presentReturnedUnlessOnScreen(sessionID, check: check)
+            } else if !pendingReturnedSessionIDs.contains(sessionID) {
                 pendingReturnedSessionIDs.append(sessionID)
             }
         }
@@ -2403,6 +2407,24 @@ final class FocusCoordinator {
         guard case let .returned(sessionID) = card, !isReturnedStillRelevant(sessionID) else { return }
         closeCard(reacted: false, now: now)
         presentPendingReturned(now: now)
+    }
+
+    private func presentReturnedUnlessOnScreen(_ sessionID: String, check: @escaping (String) async -> Bool) {
+        guard onScreenChecks.insert(sessionID).inserted else { return }
+        Task { @MainActor [weak self] in
+            let onScreen = await check(sessionID)
+            guard let self else { return }
+            self.onScreenChecks.remove(sessionID)
+            guard self.isReturnedStillRelevant(sessionID) else { return }
+            if onScreen {
+                self.markSessionSeen(sessionID)
+                return
+            }
+            if !self.pendingReturnedSessionIDs.contains(sessionID) {
+                self.pendingReturnedSessionIDs.append(sessionID)
+            }
+            self.presentPendingReturned(now: .now)
+        }
     }
 
     private func presentPendingReturned(now: Date) {

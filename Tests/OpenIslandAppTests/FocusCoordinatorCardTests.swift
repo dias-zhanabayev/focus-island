@@ -736,4 +736,39 @@ struct FocusCoordinatorCardTests {
         #expect(c.changedFiles["s1"] == nil)
         #expect(c.alternatives.isEmpty)
     }
+
+    func waitUntil(_ condition: () -> Bool) async {
+        for _ in 0..<200 where !condition() {
+            try? await Task.sleep(nanoseconds: 5_000_000)
+        }
+    }
+
+    @Test
+    func returnedCardIsSkippedWhenTheSessionIsOnScreen() async throws {
+        let h = try make()
+        let c = h.coordinator
+        var presented = 0
+        c.presentCard = { presented += 1 }
+        c.isSessionOnScreen = { _ in true }
+        c.sessionsDidChange([session("s1", .running, at: t0)], now: t0)
+        _ = try boundTask(h, title: "Фокус", sessionID: "s1")
+        c.sessionsDidChange([session("s1", .completed, at: t0.addingTimeInterval(5))], now: t0.addingTimeInterval(5))
+        #expect(c.card == nil)
+        await waitUntil { c.hubRows.first?.group == .idle }
+        #expect(c.hubRows.first?.group == .idle)
+        #expect(c.card == nil)
+        #expect(presented == 0)
+    }
+
+    @Test
+    func returnedCardShowsAfterCheckWhenTheSessionIsElsewhere() async throws {
+        let h = try make()
+        let c = h.coordinator
+        c.isSessionOnScreen = { _ in false }
+        c.sessionsDidChange([session("s1", .running, at: t0)], now: t0)
+        _ = try boundTask(h, title: "Фокус", sessionID: "s1")
+        c.sessionsDidChange([session("s1", .completed, at: t0.addingTimeInterval(5))], now: t0.addingTimeInterval(5))
+        await waitUntil { c.card != nil }
+        #expect(c.card == .returned(sessionID: "s1"))
+    }
 }
