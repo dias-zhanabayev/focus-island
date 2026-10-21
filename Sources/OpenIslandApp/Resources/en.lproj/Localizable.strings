@@ -25,6 +25,7 @@
 "settings.general.autoCollapse" = "Auto-collapse on mouse exit";
 "settings.general.keepOpenUntilDecision" = "Keep open until approve or deny";
 "settings.general.showDockIcon" = "Show icon in Dock";
+"settings.general.openOnHover" = "Open island on hover (off: click to open)";
 "settings.general.hapticFeedback" = "Haptic feedback on hover";
 "settings.general.suppressFrontmostNotifications" = "Suppress notifications for focused sessions";
 "settings.general.completionReply" = "Reply from completion card";

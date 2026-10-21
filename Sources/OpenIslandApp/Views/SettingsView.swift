@@ -210,6 +210,10 @@ struct GeneralSettingsPane: View {
                     get: { model.showDockIcon },
                     set: { model.showDockIcon = $0 }
                 ))
+                Toggle(lang.t("settings.general.openOnHover"), isOn: Binding(
+                    get: { model.openOnHover },
+                    set: { model.openOnHover = $0 }
+                ))
                 Toggle(lang.t("settings.general.hapticFeedback"), isOn: Binding(
                     get: { model.hapticFeedbackEnabled },
                     set: { model.hapticFeedbackEnabled = $0 }

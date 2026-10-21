@@ -19,6 +19,7 @@ final class AppModel {
     private static let soundMutedDefaultsKey = "overlay.sound.muted"
     private static let showDockIconDefaultsKey = "app.showDockIcon"
     private static let hapticFeedbackEnabledDefaultsKey = "app.hapticFeedbackEnabled"
+    private static let openOnHoverDefaultsKey = "app.openOnHover"
     /// When true, click-outside does not dismiss the notch while any session
     /// is waiting for approval or an answer (#547).
     private static let keepNotchOpenUntilDecisionDefaultsKey = "app.keepNotchOpenUntilDecision"
@@ -171,6 +172,12 @@ final class AppModel {
         didSet {
             guard hasFinishedInit, hapticFeedbackEnabled != oldValue else { return }
             UserDefaults.standard.set(hapticFeedbackEnabled, forKey: Self.hapticFeedbackEnabledDefaultsKey)
+        }
+    }
+    var openOnHover: Bool = true {
+        didSet {
+            guard hasFinishedInit, openOnHover != oldValue else { return }
+            UserDefaults.standard.set(openOnHover, forKey: Self.openOnHoverDefaultsKey)
         }
     }
     /// Keep the island open until the user acts on a pending approval /
@@ -479,6 +486,7 @@ final class AppModel {
         UserDefaults.standard.register(defaults: [
             Self.showDockIconDefaultsKey: true,
             Self.hapticFeedbackEnabledDefaultsKey: false,
+            Self.openOnHoverDefaultsKey: true,
             Self.keepNotchOpenUntilDecisionDefaultsKey: false,
             Self.completionReplyEnabledDefaultsKey: false,
             Self.suppressFrontmostNotificationsDefaultsKey: true,
@@ -487,6 +495,7 @@ final class AppModel {
         selectedSoundName = NotificationSoundService.selectedSoundName
         showDockIcon = UserDefaults.standard.bool(forKey: Self.showDockIconDefaultsKey)
         hapticFeedbackEnabled = UserDefaults.standard.bool(forKey: Self.hapticFeedbackEnabledDefaultsKey)
+        openOnHover = UserDefaults.standard.bool(forKey: Self.openOnHoverDefaultsKey)
         keepNotchOpenUntilDecision = UserDefaults.standard.bool(forKey: Self.keepNotchOpenUntilDecisionDefaultsKey)
         suppressFrontmostNotifications = UserDefaults.standard.bool(forKey: Self.suppressFrontmostNotificationsDefaultsKey)
         completionReplyEnabled = UserDefaults.standard.bool(forKey: Self.completionReplyEnabledDefaultsKey)
