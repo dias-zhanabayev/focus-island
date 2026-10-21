@@ -1,0 +1,33 @@
+.DS_Store
+.idea/
+.vscode/
+
+# Xcode
+DerivedData/
+build/
+*.xcworkspace/xcuserdata/
+*.xcodeproj/xcuserdata/
+*.xcuserdatad/
+*.xcuserstate
+
+# Swift Package Manager
+.build/
+.swiftpm/
+Packages/
+Package.resolved
+
+# Local tooling artifacts
+.claude/
+.playwright-mcp/
+output/
+
+# Local design docs: only demo media and release notes are tracked
+docs/*
+!docs/media/
+!docs/releases/
+
+# Logs and temp files
+*.log
+*.tmp
+.worktrees/
+.air/

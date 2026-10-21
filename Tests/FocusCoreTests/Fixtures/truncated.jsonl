@@ -1,0 +1,2 @@
+{"type":"user","sessionId":"tr-1","cwd":"/tmp/t","timestamp":"2026-10-08T11:00:00.000Z","message":{"role":"user","content":"Целый промпт"}}
+{"type":"assistant","sessionId":"tr-1","cwd":"/tmp/t","timestamp":"2026-10-08T11:00:05.000Z","message":{"role":"assist

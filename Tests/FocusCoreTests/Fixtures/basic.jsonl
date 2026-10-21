@@ -1,0 +1,7 @@
+{"type":"queue-operation","operation":"enqueue","timestamp":"2026-10-08T20:09:00.000Z","sessionId":"abc-123"}
+{"type":"user","sessionId":"abc-123","cwd":"/tmp/proj","timestamp":"2026-10-08T20:09:05.510Z","message":{"role":"user","content":"Сделай канбан доску"}}
+{"type":"assistant","sessionId":"abc-123","cwd":"/tmp/proj","timestamp":"2026-10-08T20:09:25.804Z","message":{"role":"assistant","content":[{"type":"thinking","thinking":"..."},{"type":"text","text":"Начинаю с модели."}]}}
+{"type":"user","sessionId":"abc-123","cwd":"/tmp/proj","timestamp":"2026-10-08T20:09:29.945Z","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"x","content":"ok"}]}}
+{"type":"user","sessionId":"abc-123","cwd":"/tmp/proj","timestamp":"2026-10-08T20:10:00.000Z","message":{"role":"user","content":[{"type":"text","text":"Добавь drag and drop"}]}}
+{"type":"assistant","sessionId":"abc-123","cwd":"/tmp/proj","timestamp":"2026-10-08T20:10:30.000Z","message":{"role":"assistant","content":[{"type":"text","text":"Готово."}]}}
+{"type":"ai-title","aiTitle":"kanban-board","sessionId":"abc-123"}
