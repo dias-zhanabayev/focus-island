@@ -44,7 +44,7 @@
 
 **Multiple sessions**
 - Session panel: "Waiting for you", "Done, review", "Working", "No task", "Paused".
-- Overload: when you run more sessions than your limit, the island suggests answering a waiting one first or pausing a working one.
+- Overload: when the task in focus gets more sessions than your limit, the island suggests answering a waiting one first or pausing a working one. Sessions of other tasks and unbound sessions do not count.
 - Waiting sessions from other tasks: the "Waiting outside task · N" button in the panel expands a list (age, which session, "Open", "⋯" — add to the current task or snooze); they never pop the island open on their own, there is just a quiet "N waiting" counter on the left of the pill.
 - Re-entry: when you switch to another task, you get a short "where you left off" and "what Claude did" summary.
 - Collapsed island ears: a summary on the left (working, waiting, done), the task in focus on the right; an orange "waiting Nm" when something has been waiting a long time.
@@ -62,6 +62,7 @@
 - Claude Code hook status and path, install and uninstall.
 - "Sessions": parallel session limit (1–6), waiting-session reminder (5–60 min), the "Start of day" morning screen.
 - "What's next?", "Distractions" (threshold, blocklist of domains and apps), terminal used for Resume, board hotkey.
+- Settings → General → "Open island on hover": turn it off to open the island only by clicking the notch.
 
 ## Releasing
 
