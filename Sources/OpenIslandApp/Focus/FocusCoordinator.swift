@@ -823,6 +823,10 @@ final class FocusCoordinator {
         reload()
         syncSessionSpans(latestSessions, now: now)
         refreshHub(now: now)
+        closeResolvedOverload(now: now)
+        if taskID != nil, taskID == currentTask?.id {
+            presentOverloadIfNeeded(newLiveIDs: [sessionID], now: now)
+        }
     }
 
     func createTaskForSession(sessionID: String, now: Date = .now) {
@@ -2127,18 +2131,28 @@ final class FocusCoordinator {
     private func closeResolvedOverload(now: Date) {
         guard case let .overload(sessionID) = card else { return }
         let gone = !hubRows.contains { $0.id == sessionID }
-        guard gone || OverloadPolicy.evaluate(rows: hubRows, limit: settings.maxParallelSessions) == nil else { return }
+        guard gone || overloadSuggestion == nil else { return }
         closeCard(reacted: false, now: now)
         presentPendingReturned(now: now)
     }
 
+    var overloadSuggestion: OverloadSuggestion? {
+        OverloadPolicy.evaluate(rows: hubRows, limit: settings.maxParallelSessions, taskID: currentTask?.id)
+    }
+
     private func presentOverloadIfNeeded(newLiveIDs: [String], now: Date) {
-        guard let newest = newLiveIDs.last(where: { id in hubRows.contains { $0.id == id } }),
-              OverloadPolicy.evaluate(rows: hubRows, limit: settings.maxParallelSessions) != nil else { return }
+        guard let taskID = currentTask?.id,
+              let newest = newLiveIDs.last(where: { id in hubRows.contains { $0.id == id && $0.taskID == taskID } }),
+              overloadSuggestion != nil else { return }
         present(.overload(newSessionID: newest), now: now)
     }
 
     private func evaluateFreeSlot(rows: [HubRow], now: Date) {
+        guard let taskID = currentTask?.id else {
+            slotArmed = false
+            return
+        }
+        let rows = rows.filter { $0.taskID == taskID }
         let active = rows.filter { !$0.group.isSettled }.count
         if active >= settings.maxParallelSessions {
             slotArmed = true
@@ -2296,7 +2310,7 @@ final class FocusCoordinator {
         guard !queuedCards.isEmpty, card == nil else { return }
         queuedCards.removeAll { queued in
             guard case let .overload(sessionID) = queued else { return false }
-            return !hubRows.contains { $0.id == sessionID } || OverloadPolicy.evaluate(rows: hubRows, limit: settings.maxParallelSessions) == nil
+            return !hubRows.contains { $0.id == sessionID } || overloadSuggestion == nil
         }
         guard let next = queuedCards.max(by: { $0.priority < $1.priority }) else { return }
         queuedCards.removeAll { $0 == next }

@@ -612,6 +612,7 @@ struct FocusCoordinatorPomodoroTests {
         let id = try keptEndCard(h, taskID: a)
         let four = (1...4).map { session("s\($0)", .running, at: at(310)) }
         c.sessionsDidChange(four, now: at(310))
+        for s in four { c.bind(sessionID: s.id, taskID: a, now: at(310)) }
         #expect(c.card == .pomodoroEnd(pomodoroID: id))
         c.tick(now: at(311))
         #expect(c.card == .pomodoroEnd(pomodoroID: id))

@@ -215,8 +215,9 @@ public struct OverloadSuggestion: Equatable, Sendable {
 }
 
 public enum OverloadPolicy {
-    public static func evaluate(rows: [HubRow], limit: Int) -> OverloadSuggestion? {
-        let live = rows.filter { !$0.group.isSettled }
+    public static func evaluate(rows: [HubRow], limit: Int, taskID: String?) -> OverloadSuggestion? {
+        guard let taskID else { return nil }
+        let live = rows.filter { $0.taskID == taskID && !$0.group.isSettled }
         guard live.count > limit else { return nil }
         let attend = live.filter { $0.group == .waiting }.min { $0.since < $1.since }
         let park = live.filter { $0.group == .running }.max { $0.since < $1.since }

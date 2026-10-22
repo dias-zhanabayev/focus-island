@@ -228,7 +228,7 @@ struct FocusViewLogicTests {
 
     @Test
     func overloadTitleAndChipText() {
-        #expect(OverloadCard.title(liveCount: 4) == "Запускаешь 4-ю сессию")
+        #expect(OverloadCard.title(liveCount: 4) == "4-я сессия в задаче")
         #expect(OverloadCard.subtitle(limit: 3) == "Обычно ты уверенно держишь 3. Дальше сессии начинают теряться — давай сначала разгрузим голову.")
         #expect(OverloadCard.stateText(.waiting) == "ждёт")
         #expect(OverloadCard.stateText(.running) == "работает")

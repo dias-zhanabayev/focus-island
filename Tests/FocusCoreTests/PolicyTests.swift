@@ -7,8 +7,8 @@ struct PolicyTests {
 
     func at(_ minutes: Int) -> Date { t0.addingTimeInterval(TimeInterval(minutes * 60)) }
 
-    func row(_ id: String, _ group: HubGroup, sinceMinutes: Int) -> HubRow {
-        HubRow(id: id, group: group, taskID: nil, title: id, projectName: id, detail: "", since: at(sinceMinutes), progress: nil)
+    func row(_ id: String, _ group: HubGroup, sinceMinutes: Int, taskID: String? = "t") -> HubRow {
+        HubRow(id: id, group: group, taskID: taskID, title: id, projectName: id, detail: "", since: at(sinceMinutes), progress: nil)
     }
 
     @Test
@@ -37,14 +37,29 @@ struct PolicyTests {
     @Test
     func overloadIsNilAtLimit() {
         let rows = [row("a", .running, sinceMinutes: -1), row("b", .waiting, sinceMinutes: -2), row("c", .review, sinceMinutes: -3)]
-        #expect(OverloadPolicy.evaluate(rows: rows, limit: 3) == nil)
+        #expect(OverloadPolicy.evaluate(rows: rows, limit: 3, taskID: "t") == nil)
     }
 
     @Test
     func overloadCountsIdleRows() throws {
         let rows = [row("a", .running, sinceMinutes: -1), row("i", .idle, sinceMinutes: -2)]
-        #expect(OverloadPolicy.evaluate(rows: rows, limit: 2) == nil)
-        #expect(try #require(OverloadPolicy.evaluate(rows: rows, limit: 1)).slots.count == 2)
+        #expect(OverloadPolicy.evaluate(rows: rows, limit: 2, taskID: "t") == nil)
+        #expect(try #require(OverloadPolicy.evaluate(rows: rows, limit: 1, taskID: "t")).slots.count == 2)
+    }
+
+    @Test
+    func overloadCountsOnlySessionsOfTheGivenTask() throws {
+        let rows = [
+            row("a", .running, sinceMinutes: -1),
+            row("b", .waiting, sinceMinutes: -2),
+            row("x", .running, sinceMinutes: -3, taskID: "other"),
+            row("y", .running, sinceMinutes: -4, taskID: nil),
+            row("z", .unbound, sinceMinutes: -5, taskID: nil),
+        ]
+        #expect(OverloadPolicy.evaluate(rows: rows, limit: 2, taskID: "t") == nil)
+        let suggestion = try #require(OverloadPolicy.evaluate(rows: rows, limit: 1, taskID: "t"))
+        #expect(suggestion.slots.map(\.id) == ["a", "b"])
+        #expect(OverloadPolicy.evaluate(rows: rows, limit: 0, taskID: nil) == nil)
     }
 
     @Test
@@ -55,7 +70,7 @@ struct PolicyTests {
     @Test
     func overloadPausedDoNotCount() {
         let rows = [row("a", .running, sinceMinutes: -1), row("b", .running, sinceMinutes: -2), row("p", .parked, sinceMinutes: -3)]
-        #expect(OverloadPolicy.evaluate(rows: rows, limit: 2) == nil)
+        #expect(OverloadPolicy.evaluate(rows: rows, limit: 2, taskID: "t") == nil)
     }
 
     @Test
@@ -67,7 +82,7 @@ struct PolicyTests {
             row("r-new", .running, sinceMinutes: -1),
             row("p", .parked, sinceMinutes: -9),
         ]
-        let suggestion = try #require(OverloadPolicy.evaluate(rows: rows, limit: 3))
+        let suggestion = try #require(OverloadPolicy.evaluate(rows: rows, limit: 3, taskID: "t"))
         #expect(suggestion.attend?.id == "w-old")
         #expect(suggestion.park?.id == "r-new")
         #expect(suggestion.slots.count == 4)
@@ -77,7 +92,7 @@ struct PolicyTests {
     @Test
     func overloadWithoutWaitingOrRunning() throws {
         let rows = [row("a", .review, sinceMinutes: -1), row("b", .unbound, sinceMinutes: -2)]
-        let suggestion = try #require(OverloadPolicy.evaluate(rows: rows, limit: 1))
+        let suggestion = try #require(OverloadPolicy.evaluate(rows: rows, limit: 1, taskID: "t"))
         #expect(suggestion.attend == nil)
         #expect(suggestion.park == nil)
     }

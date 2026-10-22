@@ -196,7 +196,7 @@ struct SessionHubTests {
         #expect(byID["d"]?.detail == "Завершена")
         #expect(byID["o"]?.group != .done)
         #expect(HubGroup.done.isSettled && HubGroup.parked.isSettled && !HubGroup.idle.isSettled)
-        #expect(OverloadPolicy.evaluate(rows: [byID["d"]!], limit: 0) == nil)
+        #expect(OverloadPolicy.evaluate(rows: [byID["d"]!], limit: 0, taskID: byID["d"]!.taskID) == nil)
         #expect(StalledPolicy.stalled(rows: [byID["d"]!], reminderMinutes: 0, now: now(500)).isEmpty)
     }
 }

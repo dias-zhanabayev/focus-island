@@ -6,7 +6,7 @@ struct OverloadCard: View {
     let newSessionID: String
 
     private var suggestion: OverloadSuggestion? {
-        OverloadPolicy.evaluate(rows: focus.hubRows, limit: focus.settings.maxParallelSessions)
+        focus.overloadSuggestion
     }
 
     private var slots: [HubRow] {
@@ -123,7 +123,7 @@ struct OverloadCard: View {
     }
 
     nonisolated static func title(liveCount: Int) -> String {
-        "Запускаешь \(liveCount)-ю сессию"
+        "\(liveCount)-я сессия в задаче"
     }
 
     nonisolated static func subtitle(limit: Int) -> String {
