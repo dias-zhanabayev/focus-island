@@ -1,4 +1,5 @@
 import FocusCore
+import OpenIslandCore
 import SwiftUI
 
 struct SessionHubView: View {
@@ -552,7 +553,7 @@ struct SessionHubView: View {
         if let cwd, !cwd.isEmpty {
             parts.append((cwd as NSString).lastPathComponent)
         }
-        if let prompt = prompt?.trimmingCharacters(in: .whitespacesAndNewlines), !prompt.isEmpty {
+        if let prompt = PromptText.clean(prompt) {
             let line = prompt.split(separator: "\n").first.map(String.init) ?? prompt
             parts.append("«\(line.count > 60 ? String(line.prefix(60)) + "…" : line)»")
         }

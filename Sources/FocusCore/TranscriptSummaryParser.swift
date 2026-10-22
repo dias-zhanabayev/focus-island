@@ -1,4 +1,5 @@
 import Foundation
+import OpenIslandCore
 
 public struct TranscriptSummary: Equatable, Sendable {
     public var sessionID: String
@@ -105,7 +106,7 @@ public enum TranscriptSummaryParser {
         } else {
             text = nil
         }
-        guard let trimmed = text?.trimmingCharacters(in: .whitespacesAndNewlines), !trimmed.isEmpty, !trimmed.hasPrefix("<") else {
+        guard let trimmed = PromptText.clean(text), !trimmed.hasPrefix("<") else {
             return nil
         }
         return trimmed

@@ -1051,6 +1051,8 @@ struct FocusViewLogicTests {
     func newSessionHintDetailShowsProjectAndFirstPromptLine() {
         #expect(SessionHubView.newSessionDetail(cwd: "/Users/me/focus", prompt: "хочу приложение\nи ещё") == "· focus · «хочу приложение»")
         #expect(SessionHubView.newSessionDetail(cwd: nil, prompt: "  ") == "")
+        #expect(SessionHubView.newSessionDetail(cwd: "/tmp/dashboard-metrics", prompt: "<system-reminder>ctx</system-reminder>\nДобавь метрики") == "· dashboard-metrics · «Добавь метрики»")
+        #expect(SessionHubView.newSessionDetail(cwd: "/tmp/dashboard-metrics", prompt: "<system-reminder>") == "· dashboard-metrics")
         #expect(SessionHubView.newSessionDetail(cwd: "/tmp/p", prompt: String(repeating: "а", count: 70)) == "· p · «" + String(repeating: "а", count: 60) + "…»")
         #expect(SessionHubView.footerText(focusSeconds: 1860, distractionSeconds: 0, pomodoroCount: 1) == "Сегодня: фокус 31 мин · помодоро 1 · отвлечения 0 мин")
         #expect(SessionHubView.footerText(focusSeconds: 1860, distractionSeconds: 0, pomodoroCount: 0) == "Сегодня: фокус 31 мин · отвлечения 0 мин")

@@ -34,6 +34,17 @@ struct ClaudeTranscriptDiscoveryTests {
     }
 
     @Test
+    func initialPromptSkipsSystemReminderBlocks() throws {
+        let line = #"{"type":"user","sessionId":"sr123456","cwd":"/Users/test/project","timestamp":"2026-07-22T18:00:00Z","message":{"role":"user","content":[{"type":"text","text":"<system-reminder>\nContext for the model\n</system-reminder>"},{"type":"text","text":"Почини воронку записей"}]}}"#
+        let (discovery, root) = try makeDiscovery(line: line)
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let sessions = discovery.discoverRecentSessions()
+
+        #expect(sessions.first?.claudeMetadata?.initialUserPrompt == "Почини воронку записей")
+    }
+
+    @Test
     func cliEntrypointStaysUnknown() throws {
         // A terminal (`cli`) session has no claude-desktop entrypoint and must
         // keep the "Unknown" sentinel — the terminal resolver handles it later.

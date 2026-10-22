@@ -746,8 +746,8 @@ public extension ClaudeHookPayload {
     var defaultClaudeMetadata: ClaudeSessionMetadata {
         ClaudeSessionMetadata(
             transcriptPath: transcriptPath ?? agentTranscriptPath,
-            initialUserPrompt: prompt ?? promptPreview,
-            lastUserPrompt: prompt ?? promptPreview,
+            initialUserPrompt: PromptText.clean(prompt ?? promptPreview),
+            lastUserPrompt: PromptText.clean(prompt ?? promptPreview),
             lastAssistantMessage: lastAssistantMessage ?? assistantMessagePreview,
             currentTool: toolName,
             currentToolInputPreview: toolInputPreview,

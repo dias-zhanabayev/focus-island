@@ -431,11 +431,11 @@ public extension AgentSession {
     }
 
     var latestUserPromptText: String? {
-        claudeMetadata?.lastUserPrompt
+        PromptText.clean(claudeMetadata?.lastUserPrompt)
     }
 
     var initialUserPromptText: String? {
-        claudeMetadata?.initialUserPrompt
+        PromptText.clean(claudeMetadata?.initialUserPrompt)
     }
 
     var currentCommandPreviewText: String? {

@@ -125,7 +125,7 @@ public enum SessionHub {
         if let task {
             title = task.title
         } else {
-            let prompt = (record?.firstPrompt ?? session.claudeMetadata?.initialUserPrompt)?
+            let prompt = (PromptText.clean(record?.firstPrompt) ?? PromptText.clean(session.claudeMetadata?.initialUserPrompt))?
                 .split(whereSeparator: \.isWhitespace)
                 .joined(separator: " ")
             let name = projectName ?? "без проекта"

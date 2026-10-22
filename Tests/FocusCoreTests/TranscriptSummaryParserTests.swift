@@ -47,6 +47,17 @@ struct TranscriptSummaryParserTests {
     }
 
     @Test
+    func firstPromptSkipsSystemReminderBlocks() throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let file = dir.appendingPathComponent("s-10.jsonl")
+        let line = #"{"type":"user","sessionId":"s-10","timestamp":"2026-10-08T11:00:00.000Z","message":{"content":[{"type":"text","text":"<system-reminder>ctx</system-reminder>"},{"type":"text","text":"Почини воронку"}]}}"#
+        try Data((line + "\n").utf8).write(to: file)
+        let summary = try #require(TranscriptSummaryParser.parse(fileURL: file))
+        #expect(summary.firstPrompt == "Почини воронку")
+    }
+
+    @Test
     func returnsNilForFileWithoutSessionData() throws {
         let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)

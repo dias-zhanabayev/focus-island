@@ -831,7 +831,7 @@ final class FocusCoordinator {
 
     func createTaskForSession(sessionID: String, now: Date = .now) {
         let record = try? history.session(id: sessionID)
-        let title = record?.firstPrompt ?? record?.projectName ?? "Новая задача"
+        let title = PromptText.clean(record?.firstPrompt) ?? record?.projectName ?? "Новая задача"
         attempt { try boardService.createTaskForSession(sessionID: sessionID, title: title, projectPath: record?.cwd) }
         pendingBindingSessionIDs.removeAll { $0 == sessionID }
         reload()
@@ -1965,7 +1965,7 @@ final class FocusCoordinator {
                     id: row.id,
                     title: Self.firstTaskTitle(
                         label: sessionLabel(row.id),
-                        prompt: (try? history.session(id: row.id))?.firstPrompt ?? session(row.id)?.claudeMetadata?.initialUserPrompt,
+                        prompt: PromptText.clean((try? history.session(id: row.id))?.firstPrompt) ?? PromptText.clean(session(row.id)?.claudeMetadata?.initialUserPrompt),
                         projectName: row.projectName
                     ),
                     cwd: sessionCWD(row.id),
