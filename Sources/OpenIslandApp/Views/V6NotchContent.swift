@@ -100,14 +100,6 @@ enum FocusEars {
         quiet ? "\(count)" : "\(count) ждут"
     }
 
-    nonisolated static func clickShowsWaitingOutside(leftSlot: IslandLeftSlotContent?) -> Bool {
-        switch leftSlot {
-        case .waitingOutside?: true
-        case let .pomodoro(_, base)?: clickShowsWaitingOutside(leftSlot: base)
-        default: false
-        }
-    }
-
     nonisolated static func pomodoroText(_ ear: PomodoroEar) -> String {
         switch ear.phase {
         case .focus: return PomodoroFormat.timerText(remainingSeconds: ear.remainingSeconds)
@@ -161,17 +153,8 @@ enum FocusEars {
         return false
     }
 
-    nonisolated static func clickStartsFocus(rightSlot: IslandRightSlotContent?) -> Int? {
-        if case let .startFocus(minutes)? = rightSlot { return minutes }
-        return nil
-    }
-
     nonisolated static func startFocusText(_ minutes: Int) -> String {
         "▶ Фокус \(minutes)"
-    }
-
-    nonisolated static func opensIsland(after result: PickTaskOpenResult) -> Bool {
-        result != .openedBoard
     }
 
     nonisolated static func alertOverride(

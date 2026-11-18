@@ -31,7 +31,7 @@
 - End of focus: a sound and a 5-second countdown, then the break starts on its own (5/10/15/20 min, can be cancelled or started right away; can be turned off in settings); the interval's KPIs and the next step go into the task note. After the break — "▶ Start focus · N min"; focus never starts by itself.
 - When a session has done its part — "✓ Done": it stays in the task (time, summary) but moves to the collapsed "Done" group and stays quiet; "Undo" or a new prompt brings it back. "Unbind" and "Move to another task" are in the "⋯" menu.
 - When Claude finishes, the island shows a short summary (for Claude.app sessions — Claude's own turn summary, for terminal sessions — the first sentence of the reply); the full reply is behind "Full reply ▾".
-- Without a task, the island only offers to pick one; a new session does not pop the island open — there is a hint in the pill, and during focus a quiet "Into this task / ✕" line at the bottom of the panel.
+- Without a task, the island offers "▶ Start focus · N min" (creates an untitled task and starts the timer), lists your sessions and the tasks you can pick; a new session does not pop the island open — there is a hint in the pill, and during focus a quiet "Into this task / ✕" line at the bottom of the panel.
 - The number of pomodoros per day appears in the "Today" summary.
 - "Take" on the pick card brings a task from "In progress" into focus; if it has no sessions, the "Task sessions" screen opens right away with checkboxes (bound sessions first, then the project's sessions). While a task is in focus, the panel shows only its sessions: "Unbind", "+ Add session", "Timer", "✓ Close task" (goes straight to Done, with an 8-second "Undo").
 

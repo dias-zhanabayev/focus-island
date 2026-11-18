@@ -770,31 +770,15 @@ final class AppModel {
         FocusEars.leftSlot(preference: islandRightSlot, rows: focus.hubRows, pomodoro: focus.pomodoro, waitingOutside: focus.waitingOutside.count)
     }
 
-    func openIslandFromClosedPillClick(onLeftSide: Bool = false) {
-        if onLeftSide, FocusEars.clickShowsWaitingOutside(leftSlot: islandClosedLeftSlotContent()) {
-            focus.showWaitingOutside()
-            notchOpen(reason: .click)
-            return
-        }
-        if let minutes = FocusEars.clickStartsFocus(rightSlot: islandClosedRightSlotContent()) {
-            if case .breakEnd = focus.card {
-                focus.resumeAfterBreak(minutes: minutes)
-                return
-            }
-            if islandRightSlot == .currentTask, let taskID = focus.currentTask?.id {
-                focus.startPomodoro(taskID: taskID, minutes: minutes)
-                return
-            }
-        }
+    func openIslandFromClosedPillClick() {
         if islandRightSlot == .currentTask,
            focus.currentTask == nil, !focus.pendingBindingSessionIDs.isEmpty {
             notchOpen(reason: .click)
             return
         }
         if islandRightSlot == .currentTask,
-           FocusEars.clickOpensPickTask(rightSlot: islandClosedRightSlotContent()),
-           !FocusEars.opensIsland(after: focus.openPickTask()) {
-            return
+           FocusEars.clickOpensPickTask(rightSlot: islandClosedRightSlotContent()) {
+            focus.clearCardForTaskChoice()
         }
         notchOpen(reason: .click)
     }

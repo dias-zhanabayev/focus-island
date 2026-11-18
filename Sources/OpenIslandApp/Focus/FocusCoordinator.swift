@@ -288,6 +288,10 @@ final class FocusCoordinator {
         pasteboard.setString(text, forType: .string)
     }
 
+    var hasPickableTasks: Bool {
+        !board.tasks(in: .todo).isEmpty || !board.tasks(in: .inProgress).isEmpty
+    }
+
     var hasRunningSession: Bool {
         latestSessions.contains { $0.phase == .running && !$0.isSessionEnded }
     }
@@ -629,6 +633,7 @@ final class FocusCoordinator {
     }
 
     func overlayDidClose(now: Date = .now) {
+        waitingOutsideExpanded = false
         guard let card else { return }
         if card == .onboarding && onboardingPending { return }
         if card.pomodoroID != nil {
@@ -1138,7 +1143,7 @@ final class FocusCoordinator {
             closeCard(reacted: true, now: now)
         }
         refreshHub(now: now)
-        if showPicker, !board.tasks(in: .inProgress).isEmpty || !board.tasks(in: .todo).isEmpty {
+        if showPicker, hasPickableTasks {
             openPickTask(now: now)
         } else if sessionsCard {
             presentPendingReturned(now: now)
@@ -1167,10 +1172,6 @@ final class FocusCoordinator {
     private func currentHubRows(now: Date) -> [HubRow] {
         let records = Dictionary(liveRecords.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
         return SessionHub.rows(sessions: latestSessions, records: records, board: board, unseenCompleted: unseenCompleted, now: now)
-    }
-
-    func showWaitingOutside() {
-        waitingOutsideExpanded = true
     }
 
     func toggleWaitingOutside() {
@@ -1209,18 +1210,41 @@ final class FocusCoordinator {
 
     @discardableResult
     func openPickTask(now: Date = .now) -> PickTaskOpenResult {
-        guard !board.tasks(in: .todo).isEmpty || !board.tasks(in: .inProgress).isEmpty else {
+        guard hasPickableTasks else {
             NotificationCenter.default.post(name: .focusOpenBoard, object: nil, userInfo: ["tab": "board"])
             return .openedBoard
         }
-        if let card, card.priority >= FocusCard.pomodoroEnd(pomodoroID: "").priority { return .blocked }
-        if let card {
-            if case let .returned(sessionID) = card, !pendingReturnedSessionIDs.contains(sessionID) {
-                pendingReturnedSessionIDs.insert(sessionID, at: 0)
-            }
-            closeCard(reacted: false, now: now)
-        }
+        guard clearCardForTaskChoice(now: now) else { return .blocked }
         return present(.pickTask, now: now) ? .presented : .blocked
+    }
+
+    @discardableResult
+    func clearCardForTaskChoice(now: Date = .now) -> Bool {
+        guard let card else { return true }
+        if card.priority >= FocusCard.pomodoroEnd(pomodoroID: "").priority { return false }
+        if case let .returned(sessionID) = card, !pendingReturnedSessionIDs.contains(sessionID) {
+            pendingReturnedSessionIDs.insert(sessionID, at: 0)
+        }
+        closeCard(reacted: false, now: now)
+        return true
+    }
+
+    func startQuickFocus(now: Date = .now) {
+        var created: FocusTask?
+        attempt { created = try boardService.createTask(title: Self.quickFocusTitle(now), column: .inProgress, now: now) }
+        guard let created else { return }
+        let day = DayPlanStore.dayKey(now)
+        attempt { try dayPlans.markDayStartShown(day: day, at: now) }
+        dayStartShownDay = day
+        reload()
+        startTask(taskID: created.id, sessionIDs: [], focusMinutes: settings.pomodoroFocusMinutes, now: now)
+    }
+
+    nonisolated static func quickFocusTitle(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "ru_RU")
+        formatter.dateFormat = "d MMMM, HH:mm"
+        return "Фокус · " + formatter.string(from: date)
     }
 
     @discardableResult

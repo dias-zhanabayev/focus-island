@@ -57,6 +57,32 @@ struct FocusCoordinatorTriggerTests {
     }
 
     @Test
+    func quickFocusCreatesTaskAndStartsTimerWithoutBindingSessions() throws {
+        let h = try make(dayStart: true)
+        let c = h.coordinator
+        c.settings.pomodoroFocusMinutes = 50
+        let live = session("s1", .running, at: t0)
+        c.sessionsDidChange([live], now: t0)
+
+        c.startQuickFocus(now: t0)
+
+        let task = try #require(c.currentTask)
+        #expect(task.title == FocusCoordinator.quickFocusTitle(t0))
+        #expect(task.boardColumn == .inProgress)
+        #expect(c.pomodoro?.taskID == task.id)
+        #expect(c.taskID(forSession: "s1") == nil)
+        c.tick(now: t0.addingTimeInterval(1))
+        #expect(c.card != .dayStart)
+    }
+
+    @Test
+    func quickFocusTitlesDifferWithinADay() {
+        let later = t0.addingTimeInterval(90 * 60)
+        #expect(FocusCoordinator.quickFocusTitle(t0).hasPrefix("Фокус · 10 октября"))
+        #expect(FocusCoordinator.quickFocusTitle(t0) != FocusCoordinator.quickFocusTitle(later))
+    }
+
+    @Test
     func overloadShownOncePerNewSession() throws {
         let h = try make()
         let c = h.coordinator

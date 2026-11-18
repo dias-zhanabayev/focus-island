@@ -16,10 +16,31 @@ struct SessionHubView: View {
         if Self.showsOnlyTaskChoice(hasTask: focus.currentTask != nil, pomodoroActive: focus.pomodoro != nil) {
             VStack(alignment: .leading, spacing: 16) {
                 header
+                quickFocusCard
+                if Self.liveCount(rows: focus.hubRows) > 0 {
+                    let primaryID = Self.primaryRowID(rows: focus.hubRows)
+                    ForEach(Self.groups(rows: focus.hubRows), id: \.group) { group in
+                        groupView(group, primaryID: primaryID)
+                    }
+                }
                 PickTaskCard(focus: focus, showsHeader: false)
             }
         } else {
             hub
+        }
+    }
+
+    private var quickFocusCard: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Button(PomodoroFormat.startFocusTitle(minutes: focus.settings.pomodoroFocusMinutes)) {
+                focus.startQuickFocus()
+            }
+            .buttonStyle(FocusButtonStyle(kind: .primary, height: 38, horizontalPadding: 18))
+            .font(.system(size: 15, weight: .semibold))
+            Text("Задача создастся сама, сессии добавишь в неё потом")
+                .font(FocusStyle.secondaryFont)
+                .foregroundStyle(FocusStyle.secondaryText)
+                .lineLimit(1)
         }
     }
 

@@ -142,7 +142,7 @@ struct V6ClosedPillTests {
         }
         #expect(FocusEars.alertOverride(preference: .none, toast: nil, stalled: nil, card: end) == nil)
         #expect(!FocusEars.clickOpensPickTask(rightSlot: FocusEars.alertOverride(preference: .currentTask, toast: nil, stalled: nil, card: end)))
-        #expect(FocusEars.clickStartsFocus(rightSlot: FocusEars.alertOverride(preference: .currentTask, toast: nil, stalled: nil, card: breakEnd, focusMinutes: 50)) == 50)
+        #expect(FocusEars.alertOverride(preference: .currentTask, toast: nil, stalled: nil, card: breakEnd, focusMinutes: 50) == .startFocus(50))
     }
 
     @Test
@@ -195,9 +195,6 @@ struct V6ClosedPillTests {
         #expect(!FocusEars.clickOpensPickTask(rightSlot: .text("T")))
         #expect(!FocusEars.clickOpensPickTask(rightSlot: .status("Claude работает · 1")))
         #expect(!FocusEars.clickOpensPickTask(rightSlot: nil))
-        #expect(FocusEars.opensIsland(after: .presented))
-        #expect(FocusEars.opensIsland(after: .blocked))
-        #expect(!FocusEars.opensIsland(after: .openedBoard))
     }
 
     @Test
@@ -259,8 +256,6 @@ struct V6ClosedPillTests {
         #expect(FocusEars.taskSlot(taskTitle: "Воронка", elapsedMinutes: nil, todoCount: 0, isOnBreak: false, runningCount: 0, pomodoroActive: true, focusMinutes: 50) == .text("Воронка"))
         #expect(FocusEars.taskSlot(taskTitle: nil, elapsedMinutes: nil, todoCount: 0, isOnBreak: false, runningCount: 0, inProgressCount: 2) == .hint("Выбрать задачу"))
         #expect(FocusEars.taskSlot(taskTitle: nil, elapsedMinutes: nil, todoCount: 0, isOnBreak: false, runningCount: 0, inProgressCount: 0) == .hint("Доска пуста"))
-        #expect(FocusEars.clickStartsFocus(rightSlot: .startFocus(50)) == 50)
-        #expect(FocusEars.clickStartsFocus(rightSlot: .hint("Выбрать задачу")) == nil)
         #expect(!FocusEars.clickOpensPickTask(rightSlot: .startFocus(50)))
         #expect(FocusEars.startFocusText(50) == "▶ Фокус 50")
     }
@@ -278,7 +273,5 @@ struct V6ClosedPillTests {
         #expect(FocusEars.leftSlot(preference: .currentTask, rows: rows, pomodoro: nil, waitingOutside: 0) == nil)
         #expect(FocusEars.waitingOutsideText(2, quiet: false) == "2 ждут")
         #expect(FocusEars.waitingOutsideText(2, quiet: true) == "2")
-        #expect(FocusEars.clickShowsWaitingOutside(leftSlot: .waitingOutside(2, quiet: false)))
-        #expect(!FocusEars.clickShowsWaitingOutside(leftSlot: nil))
     }
 }

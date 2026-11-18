@@ -13,12 +13,14 @@ struct PickTaskCard: View {
         VStack(alignment: .leading, spacing: 12) {
             if showsHeader {
                 header
-            } else {
+            } else if Self.hasOptions(options) {
                 Text("Над чем работаешь сейчас?")
                     .font(.system(size: 17, weight: .bold))
                     .lineLimit(1)
             }
-            list(primaryID: primaryID, showsTodo: showsTodo)
+            if Self.hasOptions(options) {
+                list(primaryID: primaryID, showsTodo: showsTodo)
+            }
             HStack(spacing: 8) {
                 Button("+ Новая задача") { openBoard() }
                     .buttonStyle(FocusButtonStyle(kind: .quiet, height: 28, horizontalPadding: 6))
@@ -139,6 +141,10 @@ struct PickTaskCard: View {
 
     private func openBoard() {
         NotificationCenter.default.post(name: .focusOpenBoard, object: nil, userInfo: SessionHubView.boardUserInfo)
+    }
+
+    nonisolated static func hasOptions(_ options: PickTaskOptions) -> Bool {
+        !options.inProgress.isEmpty || !options.todo.isEmpty
     }
 
     nonisolated static func inProgressCaption(_ count: Int) -> String {

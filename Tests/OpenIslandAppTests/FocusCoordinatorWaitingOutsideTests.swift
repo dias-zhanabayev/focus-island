@@ -100,9 +100,19 @@ struct FocusCoordinatorWaitingOutsideTests {
         let h = try make()
         let c = h.coordinator
         #expect(!c.waitingOutsideExpanded)
-        c.showWaitingOutside()
+        c.toggleWaitingOutside()
         #expect(c.waitingOutsideExpanded)
         c.toggleWaitingOutside()
+        #expect(!c.waitingOutsideExpanded)
+    }
+
+    @Test
+    func waitingOutsideCollapsesWhenTheIslandCloses() throws {
+        let h = try make()
+        let c = h.coordinator
+        c.toggleWaitingOutside()
+        #expect(c.waitingOutsideExpanded)
+        c.overlayDidClose()
         #expect(!c.waitingOutsideExpanded)
     }
 
