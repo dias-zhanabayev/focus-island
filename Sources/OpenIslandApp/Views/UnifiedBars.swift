@@ -37,9 +37,9 @@ struct UnifiedBars: View {
     private static let center: CGFloat = 12
 
     private static let columns: [Column] = [
-        Column(x: 5.25,  idleH: 3, waveCycle: [4, 12, 4], waveDelay: 0.00, waitH: 10),
-        Column(x: 10.75, idleH: 5, waveCycle: [6, 14, 6], waveDelay: 0.15, waitH: 0),
-        Column(x: 16.25, idleH: 3, waveCycle: [4, 10, 4], waveDelay: 0.30, waitH: 10),
+        Column(x: 5.25,  idleH: 3, runH: 10, waitH: 10),
+        Column(x: 10.75, idleH: 5, runH: 14, waitH: 0),
+        Column(x: 16.25, idleH: 3, runH: 10, waitH: 10),
     ]
 
     @ViewBuilder
@@ -126,7 +126,7 @@ struct UnifiedBars: View {
                     cornerHeight: width / 2,
                     transform: nil
                 )
-                barLayer.transform = CATransform3DMakeScale(1, initialScaleY(for: column), 1)
+                barLayer.transform = CATransform3DIdentity
                 barLayer.opacity = initialOpacity(for: column)
                 configureAnimations(for: barLayer, column: column)
             }
@@ -138,19 +138,10 @@ struct UnifiedBars: View {
             case .idle:
                 column.idleH
             case .running:
-                column.waveCycle.max() ?? column.idleH
+                column.runH
             case .waiting:
                 column.waitH
             }
-        }
-
-        private func initialScaleY(for column: Column) -> CGFloat {
-            guard mode == .running,
-                  let maxHeight = column.waveCycle.max(),
-                  maxHeight > 0 else {
-                return 1
-            }
-            return column.waveCycle[0] / maxHeight
         }
 
         private func initialOpacity(for column: Column) -> Float {
@@ -177,20 +168,16 @@ struct UnifiedBars: View {
         }
 
         private func addRunningAnimation(to barLayer: CAShapeLayer, column: Column) {
-            let maxHeight = column.waveCycle.max() ?? column.idleH
-            guard maxHeight > 0 else { return }
-
-            let animation = CAKeyframeAnimation(keyPath: "transform.scale.y")
-            animation.values = column.waveCycle.map { $0 / maxHeight }
+            let animation = CAKeyframeAnimation(keyPath: "opacity")
+            animation.values = [1.0, 0.35, 1.0]
             animation.keyTimes = [0, 0.5, 1]
-            animation.duration = 0.9
-            animation.beginTime = CACurrentMediaTime() + column.waveDelay
+            animation.duration = 1.4
             animation.repeatCount = .infinity
             animation.timingFunctions = [
                 CAMediaTimingFunction(name: .easeInEaseOut),
                 CAMediaTimingFunction(name: .easeInEaseOut),
             ]
-            barLayer.add(animation, forKey: "running-scale-y")
+            barLayer.add(animation, forKey: "running-opacity")
         }
 
         private func addWaitingAnimation(to barLayer: CAShapeLayer, column: Column) {
@@ -211,8 +198,7 @@ struct UnifiedBars: View {
     private struct Column: Equatable {
         let x: CGFloat
         let idleH: CGFloat
-        let waveCycle: [CGFloat]
-        let waveDelay: TimeInterval
+        let runH: CGFloat
         let waitH: CGFloat
     }
 }
