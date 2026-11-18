@@ -14,6 +14,7 @@ public enum PromptText {
         "bash-stdout",
         "bash-stderr",
         "task-notification",
+        "scheduled-task",
         "ide_selection",
         "ide_opened_file",
     ]

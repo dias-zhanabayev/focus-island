@@ -29,6 +29,13 @@ struct PromptTextTests {
     }
 
     @Test
+    func stripsScheduledTaskBlockWithAttributes() {
+        let text = "<scheduled-task name=\"prod-check\" file=\"/tmp/SKILL.md\">\nПроверь прод\n</scheduled-task>"
+        #expect(PromptText.clean(text) == nil)
+        #expect(PromptText.clean(text + "\nА ещё логи") == "А ещё логи")
+    }
+
+    @Test
     func keepsUserMarkupAndSimilarTagNames() {
         #expect(PromptText.clean("<div>hi</div> сверстай") == "<div>hi</div> сверстай")
         #expect(PromptText.clean("<system-reminders> list") == "<system-reminders> list")
