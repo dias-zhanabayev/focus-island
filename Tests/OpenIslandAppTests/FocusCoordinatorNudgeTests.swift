@@ -22,6 +22,7 @@ struct FocusCoordinatorNudgeTests {
             clipboard: { _ in },
             runBackfill: false
         )
+        coordinator.settings.autoBindNewSessions = false
         coordinator.start(initialSessions: [], now: t0)
         return coordinator
     }

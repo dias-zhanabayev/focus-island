@@ -29,7 +29,7 @@ struct FocusIslandSection: View {
             if let card = focus.card, Self.showsCardView(card) {
                 cardView(card)
             }
-            if focus.currentTask == nil, Self.showsBinding(card: focus.card), let sessionID = focus.pendingBindingSessionIDs.first {
+            if focus.currentTask == nil, Self.showsBinding(card: focus.card), let sessionID = focus.bindingRequestIDs.first {
                 BindingCard(focus: focus, sessionID: sessionID).id(sessionID)
             }
             if !Self.showsCardView(focus.card) {
@@ -55,7 +55,7 @@ struct FocusIslandSection: View {
     static func showsBinding(card: FocusCard?) -> Bool {
         switch card {
         case nil, .nextAction, .returned, .dayStart: true
-        case .onboarding, .nudge, .reEntry, .overload, .pickTask, .bindToTask, .pomodoroEnd, .breakEnd: false
+        case .onboarding, .nudge, .reEntry, .pickTask, .bindToTask, .pomodoroEnd, .breakEnd: false
         }
     }
 
@@ -70,8 +70,6 @@ struct FocusIslandSection: View {
             ReturnCard(focus: focus, sessionID: sessionID).id(sessionID)
         case let .reEntry(sessionID):
             ReEntryCard(focus: focus, sessionID: sessionID).id(sessionID)
-        case let .overload(newSessionID):
-            OverloadCard(focus: focus, newSessionID: newSessionID).id(newSessionID)
         case .dayStart:
             DayStartCard(focus: focus).id("dayStart")
         case .onboarding:

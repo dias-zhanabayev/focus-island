@@ -25,6 +25,7 @@ struct FocusCoordinatorTriggerTests {
         let defaults = defaults ?? UserDefaults(suiteName: "focus-trigger-\(UUID().uuidString)")!
         let launcher = RecordingLauncher()
         let coordinator = FocusCoordinator(store: store, defaults: defaults, launcher: launcher, promptSender: RecordingPromptSender(result: .unsupported), gitDiff: StubGitDiff(files: []), clipboard: { _ in }, runBackfill: false)
+        coordinator.settings.autoBindNewSessions = false
         coordinator.settings.dayStartEnabled = dayStart
         let jumps = JumpBox()
         coordinator.jumpToSession = { jumps.ids.append($0) }
@@ -76,78 +77,32 @@ struct FocusCoordinatorTriggerTests {
     }
 
     @Test
+    func quickFocusTakesOpenUnboundSessionsWhenAutoBindIsOn() throws {
+        let h = try make()
+        let c = h.coordinator
+        c.settings.autoBindNewSessions = true
+        c.sessionsDidChange([session("free", .running, at: t0), session("busy", .running, at: t0)], now: t0)
+        c.createTask(title: "Чужая", column: .todo, projectPath: nil)
+        let other = try #require(c.board.tasks.first?.id)
+        c.bind(sessionID: "busy", taskID: other, now: t0)
+
+        c.startQuickFocus(now: t0)
+
+        let task = try #require(c.currentTask)
+        #expect(c.taskID(forSession: "free") == task.id)
+        #expect(c.taskID(forSession: "busy") == other)
+    }
+
+    @Test
     func quickFocusTitlesDifferWithinADay() {
         let later = t0.addingTimeInterval(90 * 60)
         #expect(FocusCoordinator.quickFocusTitle(t0).hasPrefix("Фокус · 10 октября"))
         #expect(FocusCoordinator.quickFocusTitle(t0) != FocusCoordinator.quickFocusTitle(later))
     }
 
-    @Test
-    func overloadShownOncePerNewSession() throws {
-        let h = try make()
-        let c = h.coordinator
-        let task = try focusTask(c)
-        let three = (1...3).map { session("r\($0)", .running, at: t0) }
-        join(c, three, all: three, taskID: task, now: t0)
-        #expect(c.card == nil)
 
-        let fourth = session("s4", .running, at: t0.addingTimeInterval(10))
-        join(c, [fourth], all: three + [fourth], taskID: task, now: t0.addingTimeInterval(10))
-        #expect(c.card == .overload(newSessionID: "s4"))
-        c.perform(.dismiss, now: t0.addingTimeInterval(11))
-        #expect(c.card == nil)
 
-        let updated = three + [session("s4", .waitingForAnswer, at: t0.addingTimeInterval(12))]
-        c.sessionsDidChange(updated, now: t0.addingTimeInterval(12))
-        #expect(c.card == nil)
 
-        let fifth = session("s5", .running, at: t0.addingTimeInterval(13))
-        join(c, [fifth], all: updated + [fifth], taskID: task, now: t0.addingTimeInterval(13))
-        #expect(c.card == .overload(newSessionID: "s5"))
-    }
-
-    @Test
-    func overloadIgnoresSessionsOutsideTheFocusedTask() throws {
-        let h = try make()
-        let c = h.coordinator
-        let task = try focusTask(c)
-        let other = try focusTask(c, "Other")
-        c.startTask(taskID: task, sessionIDs: [], focusMinutes: nil, now: t0)
-        let own = session("own", .running, at: t0)
-        let foreign = (1...3).map { session("f\($0)", .running, at: t0) }
-        let unbound = (1...4).map { session("u\($0)", .running, at: t0) }
-        join(c, [own], all: [own] + foreign + unbound, taskID: task, now: t0)
-        for s in foreign { c.bind(sessionID: s.id, taskID: other, now: t0) }
-        #expect(c.card == nil)
-        #expect(c.overloadSuggestion == nil)
-    }
-
-    @Test
-    func overloadNeedsAFocusedTask() throws {
-        let h = try make()
-        let c = h.coordinator
-        c.sessionsDidChange((1...6).map { session("s\($0)", .running, at: t0) }, now: t0)
-        #expect(c.card == nil)
-        #expect(c.overloadSuggestion == nil)
-    }
-
-    @Test
-    func overloadClosesWhenResolved() throws {
-        let h = try make()
-        let c = h.coordinator
-        let task = try focusTask(c)
-        let four = (1...4).map { session("s\($0)", .running, at: t0) }
-        join(c, four, all: four, taskID: task, now: t0)
-        #expect(c.card == .overload(newSessionID: "s4"))
-        c.sessionsDidChange(Array(four.prefix(3)), now: t0.addingTimeInterval(1))
-        #expect(c.card == nil)
-
-        let fifth = session("s5", .running, at: t0.addingTimeInterval(2))
-        join(c, [fifth], all: Array(four.prefix(3)) + [fifth], taskID: task, now: t0.addingTimeInterval(2))
-        #expect(c.card == .overload(newSessionID: "s5"))
-        c.perform(.park(sessionID: "s1"), now: t0.addingTimeInterval(3))
-        #expect(c.card == nil)
-    }
 
     @Test
     func nextActionShowsOnTickWithWaitingSessions() throws {
@@ -197,49 +152,8 @@ struct FocusCoordinatorTriggerTests {
         #expect(c.card == .onboarding)
     }
 
-    @Test
-    func slotToastDoesNotOverwriteToast() async throws {
-        let h = try make()
-        let c = h.coordinator
-        let task = try focusTask(c)
-        let four = (1...4).map { session("s\($0)", .running, at: t0) }
-        join(c, four, all: four, taskID: task, now: t0)
-        c.perform(.dismiss, now: t0)
-        c.perform(.park(sessionID: "s4"), now: t0.addingTimeInterval(1))
-        c.perform(.queuePrompt(sessionID: "s1", text: "дальше"), now: t0.addingTimeInterval(2))
-        await c.performAsync(.sendQueuedPrompt(sessionID: "s1"), now: t0.addingTimeInterval(3))
-        #expect(c.toast == FocusCoordinator.clipboardToast)
-        c.sessionsDidChange([four[0], four[2], four[3]], now: t0.addingTimeInterval(4))
-        #expect(c.toast == FocusCoordinator.clipboardToast)
-        c.tick(now: t0.addingTimeInterval(8))
-        #expect(c.toast == "Освободился слот — вернуть proj?")
-    }
 
-    @Test
-    func overloadIgnoresSessionsWithinLimit() throws {
-        let h = try make()
-        let c = h.coordinator
-        c.sessionsDidChange((1...3).map { session("s\($0)", .running, at: t0) }, now: t0)
-        #expect(c.card == nil)
-    }
 
-    @Test
-    func slotToastOnceWhenBelowLimitWithParked() throws {
-        let h = try make()
-        let c = h.coordinator
-        let task = try focusTask(c)
-        let four = (1...4).map { session("s\($0)", .running, at: t0) }
-        join(c, four, all: four, taskID: task, now: t0)
-        c.perform(.dismiss, now: t0)
-        c.perform(.park(sessionID: "s4"), now: t0.addingTimeInterval(1))
-        #expect(c.toast == nil)
-        c.sessionsDidChange(Array(four.dropFirst()), now: t0.addingTimeInterval(2))
-        #expect(c.toast == "Освободился слот — вернуть proj?")
-        c.tick(now: t0.addingTimeInterval(10))
-        #expect(c.toast == nil)
-        c.sessionsDidChange(Array(four.dropFirst(2)), now: t0.addingTimeInterval(11))
-        #expect(c.toast == nil)
-    }
 
     @Test
     func dayStartOncePerDay() throws {

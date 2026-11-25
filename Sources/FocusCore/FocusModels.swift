@@ -71,8 +71,9 @@ public struct SessionRecord: Codable, Equatable, Identifiable, Sendable, Fetchab
     public var parkedAt: Date?
     public var lastSeenAt: Date?
     public var doneAt: Date?
+    public var hiddenAt: Date?
 
-    public init(id: String, cwd: String?, projectName: String?, title: String, firstPrompt: String?, lastPrompt: String?, lastAssistantMessage: String?, startedAt: Date, lastActivityAt: Date, endedAt: Date?, status: SessionRecordStatus, taskId: String?, transcriptPath: String?, parkedAt: Date? = nil, lastSeenAt: Date? = nil, doneAt: Date? = nil) {
+    public init(id: String, cwd: String?, projectName: String?, title: String, firstPrompt: String?, lastPrompt: String?, lastAssistantMessage: String?, startedAt: Date, lastActivityAt: Date, endedAt: Date?, status: SessionRecordStatus, taskId: String?, transcriptPath: String?, parkedAt: Date? = nil, lastSeenAt: Date? = nil, doneAt: Date? = nil, hiddenAt: Date? = nil) {
         self.id = id
         self.cwd = cwd
         self.projectName = projectName
@@ -89,6 +90,7 @@ public struct SessionRecord: Codable, Equatable, Identifiable, Sendable, Fetchab
         self.parkedAt = parkedAt
         self.lastSeenAt = lastSeenAt
         self.doneAt = doneAt
+        self.hiddenAt = hiddenAt
     }
 }
 

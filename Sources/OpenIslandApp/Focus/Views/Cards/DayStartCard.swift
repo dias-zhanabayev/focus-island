@@ -93,7 +93,7 @@ struct DayStartCard: View {
 
     private func yesterdayRow(_ row: HubRow) -> some View {
         HStack(spacing: 10) {
-            StatusDot(color: OverloadCard.stateColor(row.group))
+            StatusDot(color: Self.stateColor(row.group))
             VStack(alignment: .leading, spacing: 1) {
                 HStack(spacing: 6) {
                     Text(row.title).font(.system(size: 13, weight: .semibold)).lineLimit(1)
@@ -185,5 +185,14 @@ struct DayStartCard: View {
         formatter.dateFormat = "EEEE, d MMMM"
         let text = formatter.string(from: date)
         return text.prefix(1).uppercased() + text.dropFirst()
+    }
+
+    static func stateColor(_ group: HubGroup) -> Color {
+        switch group {
+        case .waiting: FocusStyle.waitingText
+        case .running: FocusStyle.working
+        case .review: FocusStyle.done
+        case .idle, .unbound, .parked, .done: FocusStyle.secondaryText
+        }
     }
 }

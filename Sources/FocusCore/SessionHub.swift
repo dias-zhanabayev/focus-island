@@ -86,6 +86,11 @@ public enum SessionHub {
     public static let unboundIdleMinutes = 30
     public static let promptPreviewLength = 40
 
+    public static func isHidden(_ session: AgentSession, record: SessionRecord?) -> Bool {
+        guard let record, record.hiddenAt != nil, record.taskId == nil else { return false }
+        return session.phase != .waitingForApproval && session.phase != .waitingForAnswer
+    }
+
     public static func rows(sessions: [AgentSession], records: [String: SessionRecord], board: BoardSnapshot, unseenCompleted: Set<String>, now: Date) -> [HubRow] {
         let rows = sessions
             .filter { $0.isVisibleInIsland && !$0.isSessionEnded && !$0.isDemoSession && !$0.isSyntheticProcessSession }
@@ -122,7 +127,7 @@ public enum SessionHub {
         }
 
         let title: String
-        if let task {
+        if let task, !QuickFocusTitle.isAutomatic(task.title) {
             title = task.title
         } else {
             let prompt = (PromptText.clean(record?.firstPrompt) ?? PromptText.clean(session.claudeMetadata?.initialUserPrompt))?
@@ -202,26 +207,18 @@ public enum StalledPolicy {
     }
 }
 
-public struct OverloadSuggestion: Equatable, Sendable {
-    public let slots: [HubRow]
-    public let attend: HubRow?
-    public let park: HubRow?
+public enum QuickFocusTitle {
+    public static let prefix = "Фокус · "
 
-    public init(slots: [HubRow], attend: HubRow?, park: HubRow?) {
-        self.slots = slots
-        self.attend = attend
-        self.park = park
+    public static func make(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "ru_RU")
+        formatter.dateFormat = "d MMMM, HH:mm"
+        return prefix + formatter.string(from: date)
     }
-}
 
-public enum OverloadPolicy {
-    public static func evaluate(rows: [HubRow], limit: Int, taskID: String?) -> OverloadSuggestion? {
-        guard let taskID else { return nil }
-        let live = rows.filter { $0.taskID == taskID && !$0.group.isSettled }
-        guard live.count > limit else { return nil }
-        let attend = live.filter { $0.group == .waiting }.min { $0.since < $1.since }
-        let park = live.filter { $0.group == .running }.max { $0.since < $1.since }
-        return OverloadSuggestion(slots: live, attend: attend, park: park)
+    public static func isAutomatic(_ title: String) -> Bool {
+        title.hasPrefix(prefix)
     }
 }
 

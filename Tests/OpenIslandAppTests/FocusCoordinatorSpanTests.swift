@@ -12,6 +12,7 @@ struct FocusCoordinatorSpanTests {
         let store = try store ?? FocusStore.inMemory()
         let defaults = UserDefaults(suiteName: "focus-span-\(UUID().uuidString)")!
         let coordinator = FocusCoordinator(store: store, defaults: defaults, launcher: RecordingLauncher(), gitDiff: StubGitDiff(files: []), clipboard: { _ in }, runBackfill: false)
+        coordinator.settings.autoBindNewSessions = false
         coordinator.settings.dayStartEnabled = false
         if start {
             coordinator.start(initialSessions: [], now: t0)

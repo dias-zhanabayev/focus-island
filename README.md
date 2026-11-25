@@ -31,7 +31,8 @@
 - End of focus: a sound and a 5-second countdown, then the break starts on its own (5/10/15/20 min, can be cancelled or started right away; can be turned off in settings); the interval's KPIs and the next step go into the task note. After the break — "▶ Start focus · N min"; focus never starts by itself.
 - When a session has done its part — "✓ Done": it stays in the task (time, summary) but moves to the collapsed "Done" group and stays quiet; "Undo" or a new prompt brings it back. "Unbind" and "Move to another task" are in the "⋯" menu.
 - When Claude finishes, the island shows a short summary (for Claude.app sessions — Claude's own turn summary, for terminal sessions — the first sentence of the reply); the full reply is behind "Full reply ▾".
-- Without a task, the island offers "▶ Start focus · N min" (creates an untitled task and starts the timer), lists your sessions and the tasks you can pick; a new session does not pop the island open — there is a hint in the pill, and during focus a quiet "Into this task / ✕" line at the bottom of the panel.
+- New sessions join the session list by themselves, and the task in focus if there is one. Switch Settings → Focus → Sessions to "By the Add button" to have them wait in a "New sessions" strip instead. On first launch the list offers to take in all open sessions or start clean with only new ones; "Clear list" does the same later. Cleared sessions sit under "Hidden" and can be brought back; a hidden session that asks for permission or a question returns to the list. Sessions of untitled "Focus · …" tasks are listed by their project and first prompt.
+- Without a task, the island offers "▶ Start focus · N min" (creates an untitled task, takes the open sessions and starts the timer), lists your sessions and the tasks you can pick; a new session never pops the island open.
 - The number of pomodoros per day appears in the "Today" summary.
 - "Take" on the pick card brings a task from "In progress" into focus; if it has no sessions, the "Task sessions" screen opens right away with checkboxes (bound sessions first, then the project's sessions). While a task is in focus, the panel shows only its sessions: "Unbind", "+ Add session", "Timer", "✓ Close task" (goes straight to Done, with an 8-second "Undo").
 
@@ -44,7 +45,6 @@
 
 **Multiple sessions**
 - Session panel: "Waiting for you", "Done, review", "Working", "No task", "Paused".
-- Overload: when the task in focus gets more sessions than your limit, the island suggests answering a waiting one first or pausing a working one. Sessions of other tasks and unbound sessions do not count.
 - Waiting sessions from other tasks: the "Waiting outside task · N" button in the panel expands a list (age, which session, "Open", "⋯" — add to the current task or snooze); they never pop the island open on their own, there is just a quiet "N waiting" counter on the left of the pill.
 - Re-entry: when you switch to another task, you get a short "where you left off" and "what Claude did" summary.
 - Collapsed island ears: a summary on the left (working, waiting, done), the task in focus on the right; an orange "waiting Nm" when something has been waiting a long time.
@@ -60,7 +60,7 @@
 
 **Settings** (Settings → Focus)
 - Claude Code hook status and path, install and uninstall.
-- "Sessions": parallel session limit (1–6), waiting-session reminder (5–60 min), the "Start of day" morning screen.
+- "Sessions": waiting-session reminder (5–60 min), new sessions added automatically or by the Add button, the "Start of day" morning screen.
 - "What's next?", "Distractions" (threshold, blocklist of domains and apps), terminal used for Resume, board hotkey.
 - Settings → General → "Open island on hover": turn it off to open the island only by clicking the notch.
 

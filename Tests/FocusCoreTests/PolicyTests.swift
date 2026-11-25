@@ -34,68 +34,16 @@ struct PolicyTests {
         #expect(StalledPolicy.stalled(rows: rows, reminderMinutes: 6, now: at(0)).isEmpty)
     }
 
-    @Test
-    func overloadIsNilAtLimit() {
-        let rows = [row("a", .running, sinceMinutes: -1), row("b", .waiting, sinceMinutes: -2), row("c", .review, sinceMinutes: -3)]
-        #expect(OverloadPolicy.evaluate(rows: rows, limit: 3, taskID: "t") == nil)
-    }
 
-    @Test
-    func overloadCountsIdleRows() throws {
-        let rows = [row("a", .running, sinceMinutes: -1), row("i", .idle, sinceMinutes: -2)]
-        #expect(OverloadPolicy.evaluate(rows: rows, limit: 2, taskID: "t") == nil)
-        #expect(try #require(OverloadPolicy.evaluate(rows: rows, limit: 1, taskID: "t")).slots.count == 2)
-    }
 
-    @Test
-    func overloadCountsOnlySessionsOfTheGivenTask() throws {
-        let rows = [
-            row("a", .running, sinceMinutes: -1),
-            row("b", .waiting, sinceMinutes: -2),
-            row("x", .running, sinceMinutes: -3, taskID: "other"),
-            row("y", .running, sinceMinutes: -4, taskID: nil),
-            row("z", .unbound, sinceMinutes: -5, taskID: nil),
-        ]
-        #expect(OverloadPolicy.evaluate(rows: rows, limit: 2, taskID: "t") == nil)
-        let suggestion = try #require(OverloadPolicy.evaluate(rows: rows, limit: 1, taskID: "t"))
-        #expect(suggestion.slots.map(\.id) == ["a", "b"])
-        #expect(OverloadPolicy.evaluate(rows: rows, limit: 0, taskID: nil) == nil)
-    }
 
     @Test
     func stalledIgnoresIdle() {
         #expect(StalledPolicy.stalled(rows: [row("i", .idle, sinceMinutes: -999)], reminderMinutes: 5, now: at(0)).isEmpty)
     }
 
-    @Test
-    func overloadPausedDoNotCount() {
-        let rows = [row("a", .running, sinceMinutes: -1), row("b", .running, sinceMinutes: -2), row("p", .parked, sinceMinutes: -3)]
-        #expect(OverloadPolicy.evaluate(rows: rows, limit: 2, taskID: "t") == nil)
-    }
 
-    @Test
-    func overloadPicksOldestWaitingAndNewestRunning() throws {
-        let rows = [
-            row("w-new", .waiting, sinceMinutes: -2),
-            row("w-old", .waiting, sinceMinutes: -20),
-            row("r-old", .running, sinceMinutes: -30),
-            row("r-new", .running, sinceMinutes: -1),
-            row("p", .parked, sinceMinutes: -9),
-        ]
-        let suggestion = try #require(OverloadPolicy.evaluate(rows: rows, limit: 3, taskID: "t"))
-        #expect(suggestion.attend?.id == "w-old")
-        #expect(suggestion.park?.id == "r-new")
-        #expect(suggestion.slots.count == 4)
-        #expect(!suggestion.slots.contains { $0.id == "p" })
-    }
 
-    @Test
-    func overloadWithoutWaitingOrRunning() throws {
-        let rows = [row("a", .review, sinceMinutes: -1), row("b", .unbound, sinceMinutes: -2)]
-        let suggestion = try #require(OverloadPolicy.evaluate(rows: rows, limit: 1, taskID: "t"))
-        #expect(suggestion.attend == nil)
-        #expect(suggestion.park == nil)
-    }
 
     @Test
     func dayStartBoundaries() {

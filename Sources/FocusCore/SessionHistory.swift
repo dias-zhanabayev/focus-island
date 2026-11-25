@@ -106,6 +106,24 @@ public final class SessionHistory: Sendable {
         }
     }
 
+    public func hide(sessionIDs: [String], at date: Date) throws {
+        guard !sessionIDs.isEmpty else { return }
+        try store.dbQueue.write { db in
+            for id in sessionIDs {
+                try db.execute(sql: "UPDATE sessions SET hiddenAt = ? WHERE id = ?", arguments: [date, id])
+            }
+        }
+    }
+
+    public func unhide(sessionIDs: [String]) throws {
+        guard !sessionIDs.isEmpty else { return }
+        try store.dbQueue.write { db in
+            for id in sessionIDs {
+                try db.execute(sql: "UPDATE sessions SET hiddenAt = NULL WHERE id = ?", arguments: [id])
+            }
+        }
+    }
+
     public func markDone(sessionID: String, at date: Date) throws {
         try store.dbQueue.write { db in
             try db.execute(sql: "UPDATE sessions SET doneAt = ?, parkedAt = NULL WHERE id = ?", arguments: [date, sessionID])

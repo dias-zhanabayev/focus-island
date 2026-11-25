@@ -6,6 +6,7 @@ struct SessionHubView: View {
     @Bindable var focus: FocusCoordinator
     var openSettings: (() -> Void)?
     @State private var chosenMinutes: Int?
+    @State private var showsHidden = false
 
     struct HubSection: Equatable {
         let group: HubGroup
@@ -17,12 +18,14 @@ struct SessionHubView: View {
             VStack(alignment: .leading, spacing: 16) {
                 header
                 quickFocusCard
-                if Self.liveCount(rows: focus.hubRows) > 0 {
-                    let primaryID = Self.primaryRowID(rows: focus.hubRows)
-                    ForEach(Self.groups(rows: focus.hubRows), id: \.group) { group in
+                listSetup
+                if Self.liveCount(rows: focus.listRows) > 0 {
+                    let primaryID = Self.primaryRowID(rows: focus.listRows)
+                    ForEach(Self.groups(rows: focus.listRows), id: \.group) { group in
                         groupView(group, primaryID: primaryID)
                     }
                 }
+                hiddenSection
                 PickTaskCard(focus: focus, showsHeader: false)
             }
         } else {
@@ -37,7 +40,7 @@ struct SessionHubView: View {
             }
             .buttonStyle(FocusButtonStyle(kind: .primary, height: 38, horizontalPadding: 18))
             .font(.system(size: 15, weight: .semibold))
-            Text("Задача создастся сама, сессии добавишь в неё потом")
+            Text(Self.quickFocusCaption(autoBind: focus.settings.autoBindNewSessions))
                 .font(FocusStyle.secondaryFont)
                 .foregroundStyle(FocusStyle.secondaryText)
                 .lineLimit(1)
@@ -52,24 +55,162 @@ struct SessionHubView: View {
             } else if let task = focus.currentTask {
                 startFocusCard(task)
             }
+            listSetup
             if let task = focus.currentTask {
                 focusBlock(task)
                 if focus.waitingOutsideExpanded, !focus.waitingOutside.isEmpty {
                     WaitingOutsideSection(focus: focus, task: task)
                 }
-            } else if focus.hubRows.isEmpty {
+            } else if focus.listRows.isEmpty {
                 emptyState
             } else {
-                let primaryID = Self.primaryRowID(rows: focus.hubRows)
-                ForEach(Self.groups(rows: focus.hubRows), id: \.group) { group in
+                let primaryID = Self.primaryRowID(rows: focus.listRows)
+                ForEach(Self.groups(rows: focus.listRows), id: \.group) { group in
                     groupView(group, primaryID: primaryID)
                 }
             }
+            hiddenSection
             footer
-            if let task = focus.currentTask, let sessionID = focus.pendingBindingSessionIDs.first {
+            if let task = focus.currentTask, let sessionID = focus.bindingRequestIDs.first {
                 newSessionHint(sessionID: sessionID, task: task)
             }
         }
+    }
+
+    @ViewBuilder
+    private var listSetup: some View {
+        let choice = focus.sessionListChoiceCount
+        if choice > 0 {
+            sessionListChoice(count: choice)
+        }
+        let fresh = focus.newSessionIDs
+        if !fresh.isEmpty {
+            newSessionsStrip(fresh)
+        }
+        if choice == 0, focus.currentTask == nil, focus.clearableSessionCount > 0 {
+            HStack {
+                Spacer(minLength: 0)
+                Button("Очистить список") { focus.clearSessionList() }
+                    .buttonStyle(FocusButtonStyle(kind: .quiet, height: 24, horizontalPadding: 0))
+            }
+        }
+    }
+
+    private func sessionListChoice(count: Int) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text(Self.listChoiceTitle(count))
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(FocusStyle.primaryText)
+            Text("Перенеси их в список или начни с чистого — тогда в нём будут появляться только новые сессии")
+                .font(FocusStyle.secondaryFont)
+                .foregroundStyle(FocusStyle.secondaryText)
+                .fixedSize(horizontal: false, vertical: true)
+            HStack(spacing: 8) {
+                Button("Перенести все") { focus.keepAllSessionsInList() }
+                    .buttonStyle(FocusButtonStyle(kind: .primary, height: 28))
+                Button("Очистить, только новые") { focus.clearSessionList() }
+                    .buttonStyle(FocusButtonStyle(kind: .secondary, height: 28))
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(12)
+        .background(RoundedRectangle(cornerRadius: 10).fill(FocusStyle.link.opacity(0.07)))
+    }
+
+    private func newSessionsStrip(_ ids: [String]) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                FocusSectionCaption(Self.newSessionsCaption(ids.count))
+                Spacer(minLength: 0)
+                if ids.count > 1 {
+                    Button("Добавить все") { focus.addNewSessions(ids) }
+                        .buttonStyle(FocusButtonStyle(kind: .quiet, height: 24, horizontalPadding: 0))
+                }
+            }
+            ForEach(ids, id: \.self) { id in
+                HStack(spacing: 10) {
+                    Image(systemName: "sparkle")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(FocusStyle.link)
+                        .accessibilityHidden(true)
+                    Text(Self.newSessionDetail(cwd: focus.sessionCWD(id), prompt: focus.session(id)?.claudeMetadata?.initialUserPrompt))
+                        .font(.system(size: 13))
+                        .foregroundStyle(FocusStyle.primaryText)
+                        .lineLimit(1)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    Button("Добавить") { focus.addNewSessions([id]) }
+                        .buttonStyle(FocusButtonStyle(kind: .primary, height: 28))
+                    Button {
+                        focus.skipBinding(sessionID: id)
+                    } label: {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 11, weight: .semibold))
+                            .frame(width: 20, height: 28)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(FocusStyle.secondaryText)
+                    .accessibilityLabel("Не добавлять")
+                }
+                .padding(.leading, 12)
+                .padding(.trailing, 10)
+                .padding(.vertical, 6)
+                .background(
+                    RoundedRectangle(cornerRadius: 10)
+                        .fill(FocusStyle.link.opacity(0.07))
+                        .overlay(RoundedRectangle(cornerRadius: 10).stroke(FocusStyle.link.opacity(0.35), style: StrokeStyle(lineWidth: 1, dash: [4, 3])))
+                )
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var hiddenSection: some View {
+        let hidden = focus.hiddenRows
+        if !hidden.isEmpty {
+            VStack(alignment: .leading, spacing: 6) {
+                Button {
+                    showsHidden.toggle()
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: showsHidden ? "chevron.down" : "chevron.right")
+                            .font(.system(size: 10, weight: .semibold))
+                            .accessibilityHidden(true)
+                        Text(Self.hiddenCaption(hidden.count))
+                            .font(FocusStyle.secondaryFont)
+                    }
+                    .foregroundStyle(FocusStyle.secondaryText)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                if showsHidden {
+                    ForEach(hidden) { row in
+                        HStack(spacing: 10) {
+                            Text(row.title)
+                                .font(.system(size: 13))
+                                .foregroundStyle(FocusStyle.secondaryText)
+                                .lineLimit(1)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                            Button("Вернуть") { focus.restoreHiddenSession(sessionID: row.id) }
+                                .buttonStyle(FocusButtonStyle(kind: .quiet, height: 24, horizontalPadding: 6))
+                        }
+                        .padding(.horizontal, 12)
+                    }
+                }
+            }
+        }
+    }
+
+    nonisolated static func listChoiceTitle(_ count: Int) -> String {
+        "Открыто сессий: \(count)"
+    }
+
+    nonisolated static func newSessionsCaption(_ count: Int) -> String {
+        "Новые сессии · \(count)"
+    }
+
+    nonisolated static func hiddenCaption(_ count: Int) -> String {
+        "Скрытые · \(count)"
     }
 
     private func newSessionHint(sessionID: String, task: FocusTask) -> some View {
@@ -289,12 +430,6 @@ struct SessionHubView: View {
                 Button("Сменить") { focus.openPickTask() }
                     .buttonStyle(FocusButtonStyle(kind: .quiet, height: 28, horizontalPadding: 6))
             }
-            if focus.currentTask != nil {
-                Text(Self.headerCount(live: Self.liveCount(rows: focus.hubRows), limit: focus.settings.maxParallelSessions))
-                    .font(FocusStyle.secondaryFont)
-                    .foregroundStyle(FocusStyle.secondaryText)
-                    .lineLimit(1)
-            }
             Button(FocusIslandSection.boardButtonTitle(focus.settings.boardHotKey)) {
                 NotificationCenter.default.post(name: .focusOpenBoard, object: nil, userInfo: Self.boardUserInfo)
             }
@@ -513,10 +648,6 @@ struct SessionHubView: View {
         rows.filter { !$0.group.isSettled }.count
     }
 
-    nonisolated static func headerCount(live: Int, limit: Int) -> String {
-        "\(FocusCoordinator.sessionCountText(live)) · держишь \(limit)"
-    }
-
     nonisolated static func groups(rows: [HubRow]) -> [HubSection] {
         HubGroup.allCases.compactMap { group in
             let matching = rows.filter { $0.group == group }
@@ -567,6 +698,10 @@ struct SessionHubView: View {
         case .focus: return "Фокус \(snapshot.cycleIndex) из \(snapshot.cycle) · из \(planned) мин · потом перерыв \(breakMinutes) мин"
         case .break: return "Перерыв · из \(planned) мин · потом фокус \(focusMinutes) мин"
         }
+    }
+
+    nonisolated static func quickFocusCaption(autoBind: Bool) -> String {
+        autoBind ? "Задача создастся сама, открытые сессии попадут в неё" : "Задача создастся сама, сессии добавишь в неё потом"
     }
 
     nonisolated static func newSessionDetail(cwd: String?, prompt: String?) -> String {

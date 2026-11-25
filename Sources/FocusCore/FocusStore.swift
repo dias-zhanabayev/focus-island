@@ -203,6 +203,12 @@ public final class FocusStore: Sendable {
                 t.add(column: "doneAt", .datetime)
             }
         }
+        if identifier == "v5" { return migrator }
+        migrator.registerMigration("v6") { db in
+            try db.alter(table: "sessions") { t in
+                t.add(column: "hiddenAt", .datetime)
+            }
+        }
         return migrator
     }
 }

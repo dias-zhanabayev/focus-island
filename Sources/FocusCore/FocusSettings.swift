@@ -34,7 +34,6 @@ public enum BoardHotKey: String, Codable, CaseIterable, Sendable, Identifiable {
 
 public struct FocusSettings: Codable, Equatable, Sendable {
     public static let defaultsKey = "focus.settings"
-    public static let maxParallelRange = 1...6
     public static let stalledReminderRange = 5...60
     public static let pomodoroFocusRange = 5...120
     public static let pomodoroBreakRange = 1...30
@@ -48,9 +47,9 @@ public struct FocusSettings: Codable, Equatable, Sendable {
     public var resumeTerminal: ResumeTerminal = .terminal
     public var boardHotKey: BoardHotKey = .optionCommandB
     public var nudgeSoundEnabled = false
-    public var maxParallelSessions: Int = 3
     public var stalledReminderMinutes: Int = 15
     public var dayStartEnabled: Bool = true
+    public var autoBindNewSessions: Bool = true
     public var autoBreakEnabled: Bool = true
     public var breakSoundEnabled: Bool = true
     public var pomodoroFocusMinutes: Int = 50
@@ -73,11 +72,10 @@ public struct FocusSettings: Codable, Equatable, Sendable {
         resumeTerminal = try container.decodeIfPresent(ResumeTerminal.self, forKey: .resumeTerminal) ?? defaults.resumeTerminal
         boardHotKey = try container.decodeIfPresent(BoardHotKey.self, forKey: .boardHotKey) ?? defaults.boardHotKey
         nudgeSoundEnabled = try container.decodeIfPresent(Bool.self, forKey: .nudgeSoundEnabled) ?? defaults.nudgeSoundEnabled
-        let parallel = try container.decodeIfPresent(Int.self, forKey: .maxParallelSessions) ?? defaults.maxParallelSessions
-        maxParallelSessions = min(Self.maxParallelRange.upperBound, max(Self.maxParallelRange.lowerBound, parallel))
         let stalled = try container.decodeIfPresent(Int.self, forKey: .stalledReminderMinutes) ?? defaults.stalledReminderMinutes
         stalledReminderMinutes = min(Self.stalledReminderRange.upperBound, max(Self.stalledReminderRange.lowerBound, stalled))
         dayStartEnabled = try container.decodeIfPresent(Bool.self, forKey: .dayStartEnabled) ?? defaults.dayStartEnabled
+        autoBindNewSessions = try container.decodeIfPresent(Bool.self, forKey: .autoBindNewSessions) ?? defaults.autoBindNewSessions
         autoBreakEnabled = try container.decodeIfPresent(Bool.self, forKey: .autoBreakEnabled) ?? defaults.autoBreakEnabled
         breakSoundEnabled = try container.decodeIfPresent(Bool.self, forKey: .breakSoundEnabled) ?? defaults.breakSoundEnabled
         let focus = try container.decodeIfPresent(Int.self, forKey: .pomodoroFocusMinutes) ?? defaults.pomodoroFocusMinutes
@@ -103,9 +101,9 @@ public struct FocusSettings: Codable, Equatable, Sendable {
         case resumeTerminal
         case boardHotKey
         case nudgeSoundEnabled
-        case maxParallelSessions
         case stalledReminderMinutes
         case dayStartEnabled
+        case autoBindNewSessions
         case autoBreakEnabled
         case breakSoundEnabled
         case pomodoroFocusMinutes

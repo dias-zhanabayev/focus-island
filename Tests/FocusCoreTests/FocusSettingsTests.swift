@@ -41,8 +41,8 @@ struct FocusSettingsTests {
 
     @Test
     func settingsDecodeOldJSONKeepsNewDefaults() throws {
+        #expect(try JSONDecoder().decode(FocusSettings.self, from: Data(#"{"maxParallelSessions":5}"#.utf8)) == FocusSettings())
         let settings = try JSONDecoder().decode(FocusSettings.self, from: Data(#"{"nextActionDelay":30,"nudgeSoundEnabled":true}"#.utf8))
-        #expect(settings.maxParallelSessions == 3)
         #expect(settings.stalledReminderMinutes == 15)
         #expect(settings.dayStartEnabled == true)
         #expect(settings.nextActionDelay == 30)
@@ -51,7 +51,6 @@ struct FocusSettingsTests {
     @Test
     func newFieldsRoundTrip() throws {
         var settings = FocusSettings()
-        settings.maxParallelSessions = 5
         settings.stalledReminderMinutes = 30
         settings.dayStartEnabled = false
         let decoded = try JSONDecoder().decode(FocusSettings.self, from: JSONEncoder().encode(settings))
@@ -60,14 +59,11 @@ struct FocusSettingsTests {
 
     @Test
     func decodeClampsOutOfRangeValues() throws {
-        let high = try JSONDecoder().decode(FocusSettings.self, from: Data(#"{"maxParallelSessions":99,"stalledReminderMinutes":1000}"#.utf8))
-        #expect(high.maxParallelSessions == 6)
+        let high = try JSONDecoder().decode(FocusSettings.self, from: Data(#"{"stalledReminderMinutes":1000}"#.utf8))
         #expect(high.stalledReminderMinutes == 60)
-        let low = try JSONDecoder().decode(FocusSettings.self, from: Data(#"{"maxParallelSessions":0,"stalledReminderMinutes":-3}"#.utf8))
-        #expect(low.maxParallelSessions == 1)
+        let low = try JSONDecoder().decode(FocusSettings.self, from: Data(#"{"stalledReminderMinutes":-3}"#.utf8))
         #expect(low.stalledReminderMinutes == 5)
-        let inRange = try JSONDecoder().decode(FocusSettings.self, from: Data(#"{"maxParallelSessions":4,"stalledReminderMinutes":20}"#.utf8))
-        #expect(inRange.maxParallelSessions == 4)
+        let inRange = try JSONDecoder().decode(FocusSettings.self, from: Data(#"{"stalledReminderMinutes":20}"#.utf8))
         #expect(inRange.stalledReminderMinutes == 20)
     }
 

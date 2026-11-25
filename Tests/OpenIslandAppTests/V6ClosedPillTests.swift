@@ -147,7 +147,7 @@ struct V6ClosedPillTests {
 
     @Test
     func newSessionWithoutTaskShowsQuietHint() {
-        #expect(FocusEars.taskSlot(taskTitle: nil, elapsedMinutes: nil, todoCount: 3, isOnBreak: false, runningCount: 0, newSessionPending: true) == .hint("✦ Новая сессия · задача?"))
+        #expect(FocusEars.taskSlot(taskTitle: nil, elapsedMinutes: nil, todoCount: 3, isOnBreak: false, runningCount: 0, newSessionPending: true) == .hint("✦ Новая сессия · добавить?"))
         #expect(FocusEars.taskSlot(taskTitle: nil, elapsedMinutes: nil, todoCount: 3, isOnBreak: false, runningCount: 0) == .hint("Выбрать задачу · Todo 3"))
         #expect(FocusEars.taskSlot(taskTitle: "A", elapsedMinutes: 5, todoCount: 0, isOnBreak: false, runningCount: 0, focusMinutes: 50, newSessionPending: true) == .startFocus(50))
     }

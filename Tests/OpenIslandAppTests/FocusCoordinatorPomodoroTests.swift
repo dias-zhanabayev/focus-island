@@ -24,6 +24,7 @@ struct FocusCoordinatorPomodoroTests {
         let store = try store ?? FocusStore.inMemory()
         let defaults = UserDefaults(suiteName: "focus-pomodoro-\(UUID().uuidString)")!
         let coordinator = FocusCoordinator(store: store, defaults: defaults, launcher: RecordingLauncher(), promptSender: RecordingPromptSender(result: .unsupported), gitDiff: StubGitDiff(files: []), clipboard: { _ in }, runBackfill: false)
+        coordinator.settings.autoBindNewSessions = false
         coordinator.settings.dayStartEnabled = false
         coordinator.settings.autoBreakEnabled = false
         let box = Box()
@@ -62,7 +63,6 @@ struct FocusCoordinatorPomodoroTests {
         #expect(FocusCard.breakEnd(pomodoroID: "p").priority == 8)
         #expect(FocusCard.returned(sessionID: "a").priority == 7)
         #expect(FocusCard.reEntry(sessionID: "a").priority == 6)
-        #expect(FocusCard.overload(newSessionID: "a").priority == 5)
         #expect(FocusCard.nextAction(triggeringSessionID: "a", eventID: nil).priority == 4)
         #expect(FocusCard.dayStart.priority == 2)
         #expect(FocusCard.pickTask.priority == 2)
@@ -604,36 +604,7 @@ struct FocusCoordinatorPomodoroTests {
         #expect(c.card == .returned(sessionID: "s"))
     }
 
-    @Test
-    func keptEndCardQueuesOverloadUntilActedOn() throws {
-        let h = try make()
-        let c = h.coordinator
-        let a = try task(h, "A", column: .inProgress)
-        let id = try keptEndCard(h, taskID: a)
-        let four = (1...4).map { session("s\($0)", .running, at: at(310)) }
-        c.sessionsDidChange(four, now: at(310))
-        for s in four { c.bind(sessionID: s.id, taskID: a, now: at(310)) }
-        #expect(c.card == .pomodoroEnd(pomodoroID: id))
-        c.tick(now: at(311))
-        #expect(c.card == .pomodoroEnd(pomodoroID: id))
-        c.endForToday(nextStep: nil, now: at(320))
-        c.tick(now: at(321))
-        #expect(c.card == .overload(newSessionID: "s4"))
-    }
 
-    @Test
-    func keptEndCardDropsQueuedOverloadOnceResolved() throws {
-        let h = try make()
-        let c = h.coordinator
-        let a = try task(h, "A", column: .inProgress)
-        _ = try keptEndCard(h, taskID: a)
-        let four = (1...4).map { session("s\($0)", .running, at: at(310)) }
-        c.sessionsDidChange(four, now: at(310))
-        c.sessionsDidChange(Array(four.prefix(2)), now: at(315))
-        c.endForToday(nextStep: nil, now: at(320))
-        c.tick(now: at(321))
-        #expect(c.card == nil)
-    }
 
     @Test
     func keptEndCardQueuesDayStartUntilActedOn() throws {
@@ -798,6 +769,7 @@ struct FocusCoordinatorPomodoroTests {
         try PomodoroStore(store: store).start(taskID: taskModel.id, phase: .focus, plannedSeconds: 3600, now: late.addingTimeInterval(-3600 * 2))
         let defaults = UserDefaults(suiteName: "focus-pomodoro-\(UUID().uuidString)")!
         let c = FocusCoordinator(store: store, defaults: defaults, launcher: RecordingLauncher(), gitDiff: StubGitDiff(files: []), clipboard: { _ in }, runBackfill: false)
+        c.settings.autoBindNewSessions = false
         c.settings.dayStartEnabled = false
         c.start(initialSessions: [], now: late)
         #expect(c.card == nil)

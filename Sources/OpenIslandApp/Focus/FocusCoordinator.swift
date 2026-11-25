@@ -10,7 +10,6 @@ enum FocusCard: Equatable {
     case nudge
     case returned(sessionID: String)
     case reEntry(sessionID: String)
-    case overload(newSessionID: String)
     case nextAction(triggeringSessionID: String, eventID: Int64?)
     case dayStart
     case pickTask
@@ -25,7 +24,6 @@ enum FocusCard: Equatable {
         case .pomodoroEnd, .breakEnd: 8
         case .returned: 7
         case .reEntry: 6
-        case .overload: 5
         case .nextAction: 4
         case .dayStart, .pickTask, .bindToTask: 2
         }
@@ -107,19 +105,19 @@ final class FocusCoordinator {
     static let stalledBadgeMinutes = 10
     static let onboardingTaskAddedKey = "focus.onboarding.taskAdded"
     static let onboardingDismissedKey = "focus.onboarding.dismissed"
+    static let sessionListOnboardedKey = "focus.sessionList.onboarded"
     static let onboardingPresentedKey = "focus.onboarding.presented"
     static let boundSessionsDoneWindow: TimeInterval = 7 * 86_400
     static let recoveredEndCardWindow: TimeInterval = 2 * 3600
-
-    static func slotToast(projectName: String) -> String {
-        "Освободился слот — вернуть \(projectName)?"
-    }
 
     private(set) var board = BoardSnapshot(tasks: [])
     private(set) var liveRecords: [SessionRecord] = []
     private(set) var card: FocusCard?
     private(set) var pendingBindingSessionIDs: [String] = []
     private(set) var hubRows: [HubRow] = []
+    private(set) var listRows: [HubRow] = []
+    private(set) var hiddenRows: [HubRow] = []
+    private(set) var sessionListOnboarded: Bool
     private(set) var todaySummary = TodaySummary(focusSeconds: 0, distractionSeconds: 0)
     private(set) var pomodoro: PomodoroSnapshot?
     private(set) var pomodoroCountToday = 0
@@ -235,8 +233,6 @@ final class FocusCoordinator {
     @ObservationIgnored private var sendingSessionIDs: Set<String> = []
     @ObservationIgnored private var sessionSpans: [String: OpenSpan] = [:]
     @ObservationIgnored private var youSpan: OpenSpan?
-    @ObservationIgnored private var knownSessionIDs: Set<String> = []
-    @ObservationIgnored private var slotArmed = false
     @ObservationIgnored private var dayStartShownDay: String?
     @ObservationIgnored private var started = false
     @ObservationIgnored private var spansSuspended = false
@@ -270,6 +266,7 @@ final class FocusCoordinator {
         self.pomodoroStore = PomodoroStore(store: store)
         self.onboardingTaskAdded = defaults.bool(forKey: Self.onboardingTaskAddedKey)
         self.onboardingDismissed = defaults.bool(forKey: Self.onboardingDismissedKey)
+        self.sessionListOnboarded = defaults.bool(forKey: Self.sessionListOnboardedKey)
         self.defaults = defaults
         self.launcher = launcher
         self.promptSender = promptSender
@@ -369,7 +366,6 @@ final class FocusCoordinator {
         sessionSpans = [:]
         youSpan = nil
         spansSuspended = false
-        knownSessionIDs.formUnion(initialSessions.map(\.id))
         attempt { try history.markAllLiveEnded(except: Set(initialSessions.filter { !$0.isSessionEnded }.map(\.id)), at: now) }
         for session in initialSessions {
             previousPhases[session.id] = session.phase
@@ -416,17 +412,12 @@ final class FocusCoordinator {
     }
 
     func sessionsDidChange(_ sessions: [AgentSession], now: Date = .now) {
-        guard started else {
-            knownSessionIDs.formUnion(sessions.map(\.id))
-            return
-        }
+        guard started else { return }
         let relevant = sessions.filter { !$0.isDemoSession && !$0.isSyntheticProcessSession }
         let currentIDs = Set(relevant.map(\.id))
         let focusTaskIDBefore = currentTask?.id
         var changed = false
         var finishedTurns: [String] = []
-        let newLiveIDs = relevant.filter { !$0.isSessionEnded && !knownSessionIDs.contains($0.id) }.map(\.id)
-        knownSessionIDs.formUnion(currentIDs)
 
         for removedID in Set(previousPhases.keys).subtracting(currentIDs) {
             attempt { try history.markEnded(sessionID: removedID, at: now) }
@@ -467,8 +458,14 @@ final class FocusCoordinator {
                 if firstTaskWaitingID != nil, autoBindToWaitingTask(sessionID: session.id, cwd: session.jumpTarget?.workingDirectory, now: now) {
                     changed = true
                     autoBound = true
-                } else {
+                } else if settings.autoBindNewSessions, let task = currentTask, task.boardColumn == .inProgress {
+                    autoBind(sessionID: session.id, to: task, cwd: session.jumpTarget?.workingDirectory, now: now)
+                    changed = true
+                    autoBound = true
+                } else if !settings.autoBindNewSessions {
+                    attempt { try history.hide(sessionIDs: [session.id], at: now) }
                     pendingBindingSessionIDs.append(session.id)
+                    changed = true
                 }
             }
             let previous = previousPhases[session.id]
@@ -550,8 +547,6 @@ final class FocusCoordinator {
             refreshAlternatives(triggering: triggering)
         }
         refreshHub(now: now)
-        closeResolvedOverload(now: now)
-        presentOverloadIfNeeded(newLiveIDs: newLiveIDs, now: now)
         syncYouSpan(now: now)
     }
 
@@ -725,7 +720,6 @@ final class FocusCoordinator {
             reloadLiveRecords()
             syncSessionSpans(latestSessions, now: now)
             refreshHub(now: now)
-            closeResolvedOverload(now: now)
             closeResolvedReturned(now: now)
         case let .unpark(sessionID):
             attempt { try history.unpark(sessionID: sessionID) }
@@ -828,10 +822,6 @@ final class FocusCoordinator {
         reload()
         syncSessionSpans(latestSessions, now: now)
         refreshHub(now: now)
-        closeResolvedOverload(now: now)
-        if taskID != nil, taskID == currentTask?.id {
-            presentOverloadIfNeeded(newLiveIDs: [sessionID], now: now)
-        }
     }
 
     func createTaskForSession(sessionID: String, now: Date = .now) {
@@ -852,8 +842,66 @@ final class FocusCoordinator {
         pendingBindingSessionIDs = ids
     }
 
-    func skipBinding(sessionID: String) {
+    func skipBinding(sessionID: String, now: Date = .now) {
         pendingBindingSessionIDs.removeAll { $0 == sessionID }
+        refreshHub(now: now)
+    }
+
+    var newSessionIDs: [String] {
+        let hidden = Set(liveRecords.filter { $0.hiddenAt != nil && $0.taskId == nil }.map(\.id))
+        return pendingBindingSessionIDs.filter { hidden.contains($0) }
+    }
+
+    var bindingRequestIDs: [String] {
+        let fresh = Set(newSessionIDs)
+        return pendingBindingSessionIDs.filter { !fresh.contains($0) }
+    }
+
+    var sessionListChoiceCount: Int {
+        guard !sessionListOnboarded else { return 0 }
+        return listRows.filter { $0.taskID == nil }.count
+    }
+
+    var clearableSessionCount: Int {
+        listRows.filter { $0.taskID == nil && $0.group != .waiting }.count
+    }
+
+    func addNewSessions(_ sessionIDs: [String], now: Date = .now) {
+        guard !sessionIDs.isEmpty else { return }
+        attempt { try history.unhide(sessionIDs: sessionIDs) }
+        if let task = currentTask, task.boardColumn == .inProgress {
+            for id in sessionIDs {
+                attempt { try boardService.bindSession(sessionID: id, toTaskID: task.id) }
+            }
+        }
+        pendingBindingSessionIDs.removeAll { sessionIDs.contains($0) }
+        reload()
+        syncSessionSpans(latestSessions, now: now)
+        refreshHub(now: now)
+    }
+
+    func restoreHiddenSession(sessionID: String, now: Date = .now) {
+        attempt { try history.unhide(sessionIDs: [sessionID]) }
+        pendingBindingSessionIDs.removeAll { $0 == sessionID }
+        reloadLiveRecords()
+        refreshHub(now: now)
+    }
+
+    func keepAllSessionsInList() {
+        markSessionListOnboarded()
+    }
+
+    func clearSessionList(now: Date = .now) {
+        let ids = listRows.filter { $0.taskID == nil && $0.group != .waiting }.map(\.id)
+        attempt { try history.hide(sessionIDs: ids, at: now) }
+        markSessionListOnboarded()
+        reloadLiveRecords()
+        refreshHub(now: now)
+    }
+
+    private func markSessionListOnboarded() {
+        sessionListOnboarded = true
+        defaults.set(true, forKey: Self.sessionListOnboardedKey)
     }
 
     func createTask(title: String, column: BoardColumn, projectPath: String?) {
@@ -1169,6 +1217,11 @@ final class FocusCoordinator {
         refreshHub(now: now)
     }
 
+    private func hiddenSessionIDs() -> Set<String> {
+        let records = Dictionary(liveRecords.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        return Set(latestSessions.filter { SessionHub.isHidden($0, record: records[$0.id]) }.map(\.id))
+    }
+
     private func currentHubRows(now: Date) -> [HubRow] {
         let records = Dictionary(liveRecords.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
         return SessionHub.rows(sessions: latestSessions, records: records, board: board, unseenCompleted: unseenCompleted, now: now)
@@ -1237,14 +1290,12 @@ final class FocusCoordinator {
         attempt { try dayPlans.markDayStartShown(day: day, at: now) }
         dayStartShownDay = day
         reload()
-        startTask(taskID: created.id, sessionIDs: [], focusMinutes: settings.pomodoroFocusMinutes, now: now)
+        let sessionIDs = settings.autoBindNewSessions ? listRows.filter { $0.taskID == nil && !$0.group.isSettled }.map(\.id) : []
+        startTask(taskID: created.id, sessionIDs: sessionIDs, focusMinutes: settings.pomodoroFocusMinutes, now: now)
     }
 
     nonisolated static func quickFocusTitle(_ date: Date) -> String {
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "ru_RU")
-        formatter.dateFormat = "d MMMM, HH:mm"
-        return "Фокус · " + formatter.string(from: date)
+        QuickFocusTitle.make(date)
     }
 
     @discardableResult
@@ -2050,19 +2101,24 @@ final class FocusCoordinator {
     }
 
     private func autoBindToWaitingTask(sessionID: String, cwd: String?, now: Date) -> Bool {
-        guard let taskID = firstTaskWaitingID, var task = board.task(id: taskID), task.boardColumn == .inProgress else {
+        guard let taskID = firstTaskWaitingID, let task = board.task(id: taskID), task.boardColumn == .inProgress else {
             firstTaskWaitingID = nil
             return false
         }
-        attempt { try boardService.bindSession(sessionID: sessionID, toTaskID: taskID, now: now) }
+        firstTaskWaitingID = nil
+        autoBind(sessionID: sessionID, to: task, cwd: cwd, now: now)
+        return true
+    }
+
+    private func autoBind(sessionID: String, to task: FocusTask, cwd: String?, now: Date) {
+        var task = task
+        attempt { try boardService.bindSession(sessionID: sessionID, toTaskID: task.id, now: now) }
         if (task.projectPath ?? "").isEmpty, let cwd, !cwd.isEmpty {
             task.projectPath = cwd
             attempt { try boardService.updateTask(task, now: now) }
         }
-        firstTaskWaitingID = nil
         boundSessionNotice = DoneSessionNotice(sessionID: sessionID, title: task.title)
         boundSessionShownAt = now
-        return true
     }
 
     func markOnboardingTaskAdded() {
@@ -2152,47 +2208,6 @@ final class FocusCoordinator {
         }
     }
 
-    private func closeResolvedOverload(now: Date) {
-        guard case let .overload(sessionID) = card else { return }
-        let gone = !hubRows.contains { $0.id == sessionID }
-        guard gone || overloadSuggestion == nil else { return }
-        closeCard(reacted: false, now: now)
-        presentPendingReturned(now: now)
-    }
-
-    var overloadSuggestion: OverloadSuggestion? {
-        OverloadPolicy.evaluate(rows: hubRows, limit: settings.maxParallelSessions, taskID: currentTask?.id)
-    }
-
-    private func presentOverloadIfNeeded(newLiveIDs: [String], now: Date) {
-        guard let taskID = currentTask?.id,
-              let newest = newLiveIDs.last(where: { id in hubRows.contains { $0.id == id && $0.taskID == taskID } }),
-              overloadSuggestion != nil else { return }
-        present(.overload(newSessionID: newest), now: now)
-    }
-
-    private func evaluateFreeSlot(rows: [HubRow], now: Date) {
-        guard let taskID = currentTask?.id else {
-            slotArmed = false
-            return
-        }
-        let rows = rows.filter { $0.taskID == taskID }
-        let active = rows.filter { !$0.group.isSettled }.count
-        if active >= settings.maxParallelSessions {
-            slotArmed = true
-            return
-        }
-        guard slotArmed else { return }
-        guard let parked = rows.first(where: { $0.group == .parked }) else {
-            slotArmed = false
-            return
-        }
-        guard toast == nil else { return }
-        slotArmed = false
-        toast = Self.slotToast(projectName: parked.projectName ?? parked.title)
-        toastShownAt = now
-    }
-
     private func presentDayStartIfDue(now: Date) {
         guard settings.dayStartEnabled else { return }
         let key = DayPlanStore.dayKey(now)
@@ -2239,7 +2254,6 @@ final class FocusCoordinator {
         switch card {
         case let .nextAction(triggering, _): triggering
         case let .returned(sessionID), let .reEntry(sessionID): sessionID
-        case let .overload(newSessionID): newSessionID
         default: nil
         }
     }
@@ -2315,7 +2329,7 @@ final class FocusCoordinator {
     private func queueBehindPomodoroCard(_ new: FocusCard) {
         guard card?.pomodoroID != nil else { return }
         switch new {
-        case .overload, .dayStart:
+        case .dayStart:
             queuedCards.removeAll { Self.sameKind($0, new) }
             queuedCards.append(new)
         default:
@@ -2325,17 +2339,13 @@ final class FocusCoordinator {
 
     private static func sameKind(_ lhs: FocusCard, _ rhs: FocusCard) -> Bool {
         switch (lhs, rhs) {
-        case (.overload, .overload), (.dayStart, .dayStart): true
+        case (.dayStart, .dayStart): true
         default: false
         }
     }
 
     private func presentQueuedCards(now: Date) {
         guard !queuedCards.isEmpty, card == nil else { return }
-        queuedCards.removeAll { queued in
-            guard case let .overload(sessionID) = queued else { return false }
-            return !hubRows.contains { $0.id == sessionID } || overloadSuggestion == nil
-        }
         guard let next = queuedCards.max(by: { $0.priority < $1.priority }) else { return }
         queuedCards.removeAll { $0 == next }
         present(next, now: now)
@@ -2388,6 +2398,16 @@ final class FocusCoordinator {
         if rows != hubRows {
             hubRows = rows
         }
+        let hiddenIDs = hiddenSessionIDs()
+        let pending = Set(pendingBindingSessionIDs)
+        let visible = rows.filter { !hiddenIDs.contains($0.id) }
+        if visible != listRows {
+            listRows = visible
+        }
+        let hidden = rows.filter { hiddenIDs.contains($0.id) && !pending.contains($0.id) }
+        if hidden != hiddenRows {
+            hiddenRows = hidden
+        }
         let badge = Self.stalledBadge(rows: rows, now: now)
         if badge != stalledBadge {
             stalledBadge = badge
@@ -2405,7 +2425,6 @@ final class FocusCoordinator {
         if outside != waitingOutside {
             waitingOutside = outside
         }
-        evaluateFreeSlot(rows: rows, now: now)
     }
 
     private func markCardReacted(now: Date) {

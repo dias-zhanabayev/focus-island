@@ -12,6 +12,7 @@ struct FocusFirstTaskTests {
         let store = try FocusStore.inMemory()
         let defaults = UserDefaults(suiteName: "focus-first-task-\(UUID().uuidString)")!
         let coordinator = FocusCoordinator(store: store, defaults: defaults, launcher: RecordingLauncher(), promptSender: RecordingPromptSender(result: .unsupported), gitDiff: StubGitDiff(files: []), clipboard: { _ in }, runBackfill: false)
+        coordinator.settings.autoBindNewSessions = false
         coordinator.settings.dayStartEnabled = false
         coordinator.start(initialSessions: [], now: t0)
         return coordinator
@@ -110,6 +111,111 @@ struct FocusFirstTaskTests {
         c.unbindAutoBoundSession()
         #expect(c.taskID(forSession: "first") == nil)
         #expect(c.boundSessionNotice == nil)
+    }
+
+    @Test
+    func newSessionsJoinTheFocusedTaskWhenAutoBindIsOn() throws {
+        let c = try make()
+        #expect(FocusSettings().autoBindNewSessions)
+        c.settings.autoBindNewSessions = true
+        c.createTask(title: "Фокус", column: .inProgress, projectPath: nil)
+        let taskID = try #require(c.board.tasks.first?.id)
+        c.startTask(taskID: taskID, sessionIDs: [], focusMinutes: nil, now: t0)
+
+        let first = session("first", .running, at: t0.addingTimeInterval(10), cwd: "/tmp/new-api")
+        c.sessionsDidChange([first], now: t0.addingTimeInterval(10))
+        let second = session("second", .running, at: t0.addingTimeInterval(20))
+        c.sessionsDidChange([first, second], now: t0.addingTimeInterval(20))
+
+        #expect(c.taskID(forSession: "first") == taskID)
+        #expect(c.taskID(forSession: "second") == taskID)
+        #expect(c.pendingBindingSessionIDs.isEmpty)
+        #expect(c.boundSessionNotice?.sessionID == "second")
+        #expect(c.board.task(id: taskID)?.projectPath == "/tmp/new-api")
+
+        c.unbindAutoBoundSession()
+        #expect(c.taskID(forSession: "second") == nil)
+    }
+
+    @Test
+    func newSessionWithoutTaskJustJoinsTheList() throws {
+        let c = try make()
+        c.settings.autoBindNewSessions = true
+        c.sessionsDidChange([session("s", .running, at: t0, cwd: "/tmp/proj")], now: t0)
+        #expect(c.currentTask == nil)
+        #expect(c.board.tasks.isEmpty)
+        #expect(c.taskID(forSession: "s") == nil)
+        #expect(c.pendingBindingSessionIDs.isEmpty)
+        #expect(c.hubRows.map(\.id) == ["s"])
+    }
+
+    @Test
+    func newSessionWithoutTaskAsksWhenAutoBindIsOff() throws {
+        let c = try make()
+        c.sessionsDidChange([session("s", .running, at: t0)], now: t0)
+        #expect(c.taskID(forSession: "s") == nil)
+        #expect(c.currentTask == nil)
+        #expect(c.pendingBindingSessionIDs == ["s"])
+        #expect(c.newSessionIDs == ["s"])
+        #expect(c.listRows.isEmpty)
+    }
+
+    @Test
+    func addingNewSessionPutsItIntoTheList() throws {
+        let c = try make()
+        c.sessionsDidChange([session("s", .running, at: t0)], now: t0)
+        c.addNewSessions(["s"], now: t0)
+        #expect(c.newSessionIDs.isEmpty)
+        #expect(c.listRows.map(\.id) == ["s"])
+        #expect(c.hiddenRows.isEmpty)
+    }
+
+    @Test
+    func addingNewSessionWithTaskInFocusJoinsTheTask() throws {
+        let c = try make()
+        _ = c.startFirstTask(title: "Задача", sessionIDs: [], criterion: nil, now: t0)
+        let first = session("first", .running, at: t0.addingTimeInterval(2))
+        c.sessionsDidChange([first], now: t0.addingTimeInterval(2))
+        c.sessionsDidChange([first, session("s", .running, at: t0.addingTimeInterval(5))], now: t0.addingTimeInterval(5))
+        #expect(c.newSessionIDs == ["s"])
+        c.addNewSessions(["s"], now: t0.addingTimeInterval(6))
+        #expect(c.taskID(forSession: "s") == c.currentTask?.id)
+    }
+
+    @Test
+    func skippedNewSessionGoesToHidden() throws {
+        let c = try make()
+        c.sessionsDidChange([session("s", .running, at: t0)], now: t0)
+        c.skipBinding(sessionID: "s", now: t0)
+        #expect(c.listRows.isEmpty)
+        #expect(c.hiddenRows.map(\.id) == ["s"])
+        c.restoreHiddenSession(sessionID: "s", now: t0)
+        #expect(c.listRows.map(\.id) == ["s"])
+    }
+
+    @Test
+    func clearingListHidesOpenSessionsButNotWaitingOnes() throws {
+        let c = try make()
+        c.settings.autoBindNewSessions = true
+        c.sessionsDidChange([session("a", .running, at: t0), session("b", .waitingForApproval, at: t0)], now: t0)
+        #expect(c.sessionListChoiceCount == 2)
+        c.clearSessionList(now: t0)
+        #expect(c.sessionListChoiceCount == 0)
+        #expect(c.listRows.map(\.id) == ["b"])
+        #expect(c.hiddenRows.map(\.id) == ["a"])
+        c.sessionsDidChange([session("a", .waitingForAnswer, at: t0.addingTimeInterval(5)), session("b", .waitingForApproval, at: t0)], now: t0.addingTimeInterval(5))
+        #expect(Set(c.listRows.map(\.id)) == ["a", "b"])
+    }
+
+    @Test
+    func keepingAllSessionsAsksOnlyOnce() throws {
+        let c = try make()
+        c.settings.autoBindNewSessions = true
+        c.sessionsDidChange([session("a", .running, at: t0)], now: t0)
+        #expect(c.sessionListChoiceCount == 1)
+        c.keepAllSessionsInList()
+        #expect(c.sessionListChoiceCount == 0)
+        #expect(c.listRows.map(\.id) == ["a"])
     }
 
     @Test

@@ -23,6 +23,7 @@ struct FocusCoordinatorWaitingOutsideTests {
         let store = try FocusStore.inMemory()
         let defaults = UserDefaults(suiteName: "focus-waiting-\(UUID().uuidString)")!
         let coordinator = FocusCoordinator(store: store, defaults: defaults, launcher: RecordingLauncher(), promptSender: RecordingPromptSender(result: .unsupported), gitDiff: StubGitDiff(files: []), clipboard: { _ in }, runBackfill: false)
+        coordinator.settings.autoBindNewSessions = false
         coordinator.settings.dayStartEnabled = false
         coordinator.settings.nextActionEnabled = false
         let box = Box()

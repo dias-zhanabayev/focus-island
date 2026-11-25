@@ -36,6 +36,12 @@ struct PromptTextTests {
     }
 
     @Test
+    func stripsTeammateMessageBlock() {
+        let text = "<teammate-message teammate_id=\"team-lead\">\nсделай ревью\n</teammate-message>\nи проверь тесты"
+        #expect(PromptText.clean(text) == "и проверь тесты")
+    }
+
+    @Test
     func keepsUserMarkupAndSimilarTagNames() {
         #expect(PromptText.clean("<div>hi</div> сверстай") == "<div>hi</div> сверстай")
         #expect(PromptText.clean("<system-reminders> list") == "<system-reminders> list")

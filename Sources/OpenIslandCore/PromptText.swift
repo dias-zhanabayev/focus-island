@@ -15,6 +15,7 @@ public enum PromptText {
         "bash-stderr",
         "task-notification",
         "scheduled-task",
+        "teammate-message",
         "ide_selection",
         "ide_opened_file",
     ]

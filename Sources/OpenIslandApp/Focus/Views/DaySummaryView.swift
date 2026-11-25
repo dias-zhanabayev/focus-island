@@ -176,7 +176,7 @@ struct DaySummaryView: View {
                 detail: value.flatMap { DaySummaryFormatter.distractionDetail(count: $0.distractionCount, returned: $0.returnedCount) }
             )
             kpi("Помодоро", value == nil ? "—" : "\(pomodoroCount)")
-            kpi("Макс. параллельно", value.map { "\($0.maxParallel)" } ?? "—", detail: "комфортно до \(focus.settings.maxParallelSessions)")
+            kpi("Макс. параллельно", value.map { "\($0.maxParallel)" } ?? "—")
         }
     }
 

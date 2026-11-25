@@ -105,6 +105,7 @@ struct FocusCoordinatorCardTests {
             clipboard: { clipboard.items.append($0) },
             runBackfill: false
         )
+        coordinator.settings.autoBindNewSessions = false
         let jumps = JumpBox()
         coordinator.jumpToSession = { jumps.ids.append($0) }
         coordinator.start(initialSessions: [], now: t0)
@@ -131,10 +132,10 @@ struct FocusCoordinatorCardTests {
     @Test
     func priorityOrder() throws {
         let ordered: [FocusCard] = [
-            .onboarding, .nudge, .returned(sessionID: "a"), .reEntry(sessionID: "a"), .overload(newSessionID: "a"),
+            .onboarding, .nudge, .returned(sessionID: "a"), .reEntry(sessionID: "a"),
             .nextAction(triggeringSessionID: "a", eventID: nil), .dayStart,
         ]
-        #expect(ordered.map(\.priority) == [10, 9, 7, 6, 5, 4, 2])
+        #expect(ordered.map(\.priority) == [10, 9, 7, 6, 4, 2])
         for (index, card) in ordered.enumerated() {
             #expect(FocusCard.canReplace(nil, with: card))
             #expect(FocusCard.canReplace(card, with: card))
@@ -619,6 +620,7 @@ struct FocusCoordinatorCardTests {
         let defaults = UserDefaults(suiteName: "focus-card-\(UUID().uuidString)")!
         let sender = GatedPromptSender()
         let c = FocusCoordinator(store: store, defaults: defaults, launcher: RecordingLauncher(), promptSender: sender, gitDiff: StubGitDiff(files: []), clipboard: { _ in }, runBackfill: false)
+        c.settings.autoBindNewSessions = false
         c.start(initialSessions: [], now: t0)
         c.sessionsDidChange([session("s1", .running, at: t0)], now: t0)
         c.perform(.queuePrompt(sessionID: "s1", text: "дальше"), now: t0.addingTimeInterval(1))
@@ -666,6 +668,7 @@ struct FocusCoordinatorCardTests {
         let defaults = UserDefaults(suiteName: "focus-card-\(UUID().uuidString)")!
         let sender = GatedPromptSender()
         let c = FocusCoordinator(store: store, defaults: defaults, launcher: RecordingLauncher(), promptSender: sender, gitDiff: StubGitDiff(files: []), clipboard: { _ in }, runBackfill: false)
+        c.settings.autoBindNewSessions = false
         c.start(initialSessions: [], now: t0)
         c.sessionsDidChange([session("s1", .running, at: t0)], now: t0)
         c.perform(.queuePrompt(sessionID: "s1", text: "дальше"), now: t0.addingTimeInterval(1))

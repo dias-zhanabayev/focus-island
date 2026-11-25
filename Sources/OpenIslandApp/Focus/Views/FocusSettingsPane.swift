@@ -11,8 +11,13 @@ struct FocusSettingsPane: View {
     @State private var appsText = ""
     @State private var domainsText = ""
 
-    static let maxParallelRange = FocusSettings.maxParallelRange
     static let stalledReminderRange = FocusSettings.stalledReminderRange
+
+    nonisolated static func newSessionsCaption(autoBind: Bool) -> String {
+        autoBind
+            ? "Новая сессия сразу появляется в списке, а при задаче в фокусе — в задаче"
+            : "Новая сессия ждёт в полоске «Новые сессии», пока не нажмёшь «Добавить»"
+    }
 
     nonisolated static func hooksTitle(installed: Bool) -> String {
         installed ? "Хуки Claude Code установлены" : "Хуки Claude Code не установлены"
@@ -75,8 +80,14 @@ struct FocusSettingsPane: View {
                     .foregroundStyle(.secondary)
             }
             Section("Сессии") {
-                Stepper("Комфортно держу параллельно: \(focus.settings.maxParallelSessions)", value: $focus.settings.maxParallelSessions, in: Self.maxParallelRange)
                 Stepper("Напомнить о ждущей сессии через \(focus.settings.stalledReminderMinutes) мин", value: $focus.settings.stalledReminderMinutes, in: Self.stalledReminderRange)
+                Picker("Новые сессии", selection: $focus.settings.autoBindNewSessions) {
+                    Text("Добавлять в список сами").tag(true)
+                    Text("По кнопке «Добавить»").tag(false)
+                }
+                Text(Self.newSessionsCaption(autoBind: focus.settings.autoBindNewSessions))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
                 Toggle("Утренний экран «Начало дня»", isOn: $focus.settings.dayStartEnabled)
             }
             Section("Отвлечения") {

@@ -185,7 +185,7 @@ enum FocusEars {
         }
     }
 
-    nonisolated static let newSessionHint = "✦ Новая сессия · задача?"
+    nonisolated static let newSessionHint = "✦ Новая сессия · добавить?"
 
     nonisolated static func rightSlot(
         toast: String?,

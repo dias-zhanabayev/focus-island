@@ -124,6 +124,7 @@ struct FocusCoordinatorTests {
         let launcher = RecordingLauncher()
         let defaults = UserDefaults(suiteName: "focus-coord-\(UUID().uuidString)")!
         let coordinator = FocusCoordinator(store: store, defaults: defaults, launcher: launcher, gitDiff: StubGitDiff(files: []), clipboard: { _ in }, runBackfill: false)
+        coordinator.settings.autoBindNewSessions = false
         return (coordinator, store, launcher)
     }
 
@@ -240,6 +241,7 @@ struct FocusCoordinatorTests {
         let defaults = UserDefaults(suiteName: "focus-coord-\(UUID().uuidString)")!
         let thrower = ThrowingLauncher(error: TerminalLaunchError.scriptFailed("test error"))
         let coordinator = FocusCoordinator(store: store, defaults: defaults, launcher: thrower, gitDiff: StubGitDiff(files: []), clipboard: { _ in }, runBackfill: false)
+        coordinator.settings.autoBindNewSessions = false
 
         coordinator.start(initialSessions: [], now: t0)
         coordinator.createTask(title: "Следующее", column: .todo, projectPath: "/tmp/next")

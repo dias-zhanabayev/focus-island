@@ -226,16 +226,6 @@ struct FocusViewLogicTests {
         #expect(none.thisProject.isEmpty && none.others.count == 4)
     }
 
-    @Test
-    func overloadTitleAndChipText() {
-        #expect(OverloadCard.title(liveCount: 4) == "4-я сессия в задаче")
-        #expect(OverloadCard.subtitle(limit: 3) == "Обычно ты уверенно держишь 3. Дальше сессии начинают теряться — давай сначала разгрузим голову.")
-        #expect(OverloadCard.stateText(.waiting) == "ждёт")
-        #expect(OverloadCard.stateText(.running) == "работает")
-        #expect(OverloadCard.stateText(.review) == "готово")
-        #expect(OverloadCard.stateText(.idle) == "твой ход")
-        #expect(OverloadCard.stateText(.unbound) == "без задачи")
-    }
 
     @Test
     func onboardingCompletionAndInput() {
@@ -262,12 +252,6 @@ struct FocusViewLogicTests {
         #expect(BindingCard.shortPath("/tmp/x") == "/tmp/x")
     }
 
-    @Test
-    func overloadWaitingDetailUsesNow() {
-        let since = Date(timeIntervalSince1970: 1000)
-        let row = HubRow(id: "a", group: .waiting, taskID: nil, title: "a", projectName: nil, detail: "", since: since, progress: nil)
-        #expect(OverloadCard.waitingDetail(row: row, now: since.addingTimeInterval(190)) == "ждёт 3 мин")
-    }
 
     @Test
     func bindingShownBelowNonModalCardsOnly() {
@@ -276,7 +260,6 @@ struct FocusViewLogicTests {
         #expect(FocusIslandSection.showsBinding(card: .returned(sessionID: "a")))
         #expect(!FocusIslandSection.showsBinding(card: .onboarding))
         #expect(!FocusIslandSection.showsBinding(card: .nudge))
-        #expect(!FocusIslandSection.showsBinding(card: .overload(newSessionID: "a")))
         #expect(!FocusIslandSection.showsBinding(card: .reEntry(sessionID: "a")))
     }
 
@@ -291,15 +274,6 @@ struct FocusViewLogicTests {
         #expect(SessionHubView.primaryRowID(rows: []) == nil)
     }
 
-    @Test
-    func hubHeaderCountPluralizesSessions() {
-        #expect(SessionHubView.headerCount(live: 4, limit: 3) == "4 сессии · держишь 3")
-        #expect(SessionHubView.headerCount(live: 1, limit: 3) == "1 сессия · держишь 3")
-        #expect(SessionHubView.headerCount(live: 5, limit: 6) == "5 сессий · держишь 6")
-        #expect(SessionHubView.headerCount(live: 11, limit: 3) == "11 сессий · держишь 3")
-        #expect(SessionHubView.headerCount(live: 21, limit: 3) == "21 сессия · держишь 3")
-        #expect(SessionHubView.headerCount(live: 0, limit: 3) == "0 сессий · держишь 3")
-    }
 
     @Test
     func hubLiveCountSkipsParked() {
@@ -855,7 +829,6 @@ struct FocusViewLogicTests {
 
     @Test
     func settingsStepperBoundsAreClamped() {
-        #expect(FocusSettingsPane.maxParallelRange == 1...6)
         #expect(FocusSettingsPane.stalledReminderRange == 5...60)
         #expect(FocusSettingsPane.hooksTitle(installed: true) == "Хуки Claude Code установлены")
         #expect(FocusSettingsPane.hooksTitle(installed: false) == "Хуки Claude Code не установлены")

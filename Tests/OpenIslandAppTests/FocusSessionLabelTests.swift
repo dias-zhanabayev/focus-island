@@ -36,6 +36,7 @@ struct FocusSessionLabelTests {
         let store = try FocusStore.inMemory()
         let defaults = UserDefaults(suiteName: "focus-labels-\(UUID().uuidString)")!
         let c = FocusCoordinator(store: store, defaults: defaults, launcher: RecordingLauncher(), promptSender: RecordingPromptSender(result: .unsupported), gitDiff: StubGitDiff(files: []), clipboard: { _ in }, runBackfill: false)
+        c.settings.autoBindNewSessions = false
         c.settings.dayStartEnabled = false
         c.settings.nextActionEnabled = false
         let calls = Calls()
@@ -76,6 +77,7 @@ struct FocusSessionLabelTests {
         let store = try FocusStore.inMemory()
         let defaults = UserDefaults(suiteName: "focus-continuation-\(UUID().uuidString)")!
         let c = FocusCoordinator(store: store, defaults: defaults, launcher: RecordingLauncher(), promptSender: RecordingPromptSender(result: .unsupported), gitDiff: StubGitDiff(files: []), clipboard: { _ in }, runBackfill: false)
+        c.settings.autoBindNewSessions = false
         c.settings.dayStartEnabled = false
         c.settings.nextActionEnabled = false
         c.lookupSessionLabels = { ids in

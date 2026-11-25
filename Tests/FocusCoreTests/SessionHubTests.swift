@@ -32,6 +32,23 @@ struct SessionHubTests {
     }
 
     @Test
+    func rowOfAutoNamedTaskShowsSessionTopic() {
+        let auto = task("a", QuickFocusTitle.make(t0))
+        let named = task("n", "Воронка записей")
+        let result = rows(
+            [session("s1", .running, prompt: "поправь вебхук"), session("s2", .running, prompt: "x")],
+            records: [record("s1", taskId: "a"), record("s2", taskId: "n")],
+            tasks: [auto, named]
+        )
+        let byID = Dictionary(uniqueKeysWithValues: result.map { ($0.id, $0) })
+        #expect(byID["s1"]?.title == "proj · «поправь вебхук»")
+        #expect(byID["s1"]?.taskID == "a")
+        #expect(byID["s2"]?.title == "Воронка записей")
+        #expect(QuickFocusTitle.isAutomatic(QuickFocusTitle.make(t0)))
+        #expect(!QuickFocusTitle.isAutomatic("Фокусировка"))
+    }
+
+    @Test
     func progressIsNilForEmptyPlan() {
         #expect(PlanProgress.from([]) == nil)
     }
@@ -196,7 +213,6 @@ struct SessionHubTests {
         #expect(byID["d"]?.detail == "Завершена")
         #expect(byID["o"]?.group != .done)
         #expect(HubGroup.done.isSettled && HubGroup.parked.isSettled && !HubGroup.idle.isSettled)
-        #expect(OverloadPolicy.evaluate(rows: [byID["d"]!], limit: 0, taskID: byID["d"]!.taskID) == nil)
         #expect(StalledPolicy.stalled(rows: [byID["d"]!], reminderMinutes: 0, now: now(500)).isEmpty)
     }
 }
