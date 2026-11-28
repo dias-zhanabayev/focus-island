@@ -359,6 +359,10 @@ struct SessionHubView: View {
                     .font(FocusStyle.secondaryFont)
                     .foregroundStyle(FocusStyle.secondaryText)
                     .lineLimit(1)
+                if !isBreak, focus.settings.musicEnabled, let music = focus.music {
+                    MusicControls(player: music, genre: focus.settings.musicGenre)
+                        .padding(.top, 4)
+                }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             if isBreak {
@@ -713,5 +717,47 @@ struct SessionHubView: View {
             parts.append("«\(line.count > 60 ? String(line.prefix(60)) + "…" : line)»")
         }
         return parts.map { "· " + $0 }.joined(separator: " ")
+    }
+}
+
+struct MusicControls: View {
+    let player: ChillifyPlayer
+    let genre: MusicGenre
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "music.note")
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(FocusStyle.secondaryText)
+                .accessibilityHidden(true)
+            Text(Self.caption(genre: genre, track: player.currentTrack))
+                .font(FocusStyle.secondaryFont)
+                .foregroundStyle(FocusStyle.secondaryText)
+                .lineLimit(1)
+            iconButton(player.isUserPaused ? "play.fill" : "pause.fill", label: player.isUserPaused ? "Включить музыку" : "Выключить музыку") { player.togglePause() }
+            iconButton("forward.fill", label: "Следующий трек") { player.next() }
+            iconButton(Self.isLiked(player) ? "heart.fill" : "heart", label: "Нравится") { player.like() }
+        }
+    }
+
+    private func iconButton(_ name: String, label: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: name)
+                .font(.system(size: 11, weight: .semibold))
+                .frame(width: 22, height: 22)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(FocusStyle.tagText)
+        .accessibilityLabel(label)
+        .help(label)
+    }
+
+    private static func isLiked(_ player: ChillifyPlayer) -> Bool {
+        player.currentTrack.map { player.likedTracks.contains($0) } ?? false
+    }
+
+    nonisolated static func caption(genre: MusicGenre, track: String?) -> String {
+        track == nil ? "\(genre.title) · загружаю" : genre.title
     }
 }

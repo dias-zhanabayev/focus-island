@@ -553,6 +553,7 @@ final class AppModel {
         focus.playSound = { name in
             NSSound(named: NSSound.Name(name))?.play()
         }
+        focus.music = ChillifyPlayer()
         focus.presentCard = { [weak self] in
             guard let self, self.notchStatus != .opened else { return }
             self.notchOpen(reason: .notification, surface: .sessionList())

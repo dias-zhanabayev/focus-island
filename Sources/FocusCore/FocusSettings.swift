@@ -55,6 +55,9 @@ public struct FocusSettings: Codable, Equatable, Sendable {
     public var pomodoroFocusMinutes: Int = 50
     public var pomodoroBreakMinutes: Int = 10
     public var pomodoroCycle: Int = 4
+    public var musicEnabled = false
+    public var musicGenre: MusicGenre = .chill
+    public var musicVolume: Double = 0.5
     private var timerDefaultsVersion = Self.currentTimerDefaultsVersion
 
     private static let currentTimerDefaultsVersion = 2
@@ -84,6 +87,10 @@ public struct FocusSettings: Codable, Equatable, Sendable {
         pomodoroBreakMinutes = min(Self.pomodoroBreakRange.upperBound, max(Self.pomodoroBreakRange.lowerBound, pause))
         let cycle = try container.decodeIfPresent(Int.self, forKey: .pomodoroCycle) ?? defaults.pomodoroCycle
         pomodoroCycle = min(Self.pomodoroCycleRange.upperBound, max(Self.pomodoroCycleRange.lowerBound, cycle))
+        musicEnabled = try container.decodeIfPresent(Bool.self, forKey: .musicEnabled) ?? defaults.musicEnabled
+        musicGenre = (try? container.decodeIfPresent(MusicGenre.self, forKey: .musicGenre)) ?? defaults.musicGenre
+        let volume = try container.decodeIfPresent(Double.self, forKey: .musicVolume) ?? defaults.musicVolume
+        musicVolume = min(1, max(0, volume))
         let version = try container.decodeIfPresent(Int.self, forKey: .timerDefaultsVersion) ?? 1
         if version < Self.currentTimerDefaultsVersion, pomodoroFocusMinutes == 25, pomodoroBreakMinutes == 5 {
             pomodoroFocusMinutes = defaults.pomodoroFocusMinutes
@@ -109,6 +116,9 @@ public struct FocusSettings: Codable, Equatable, Sendable {
         case pomodoroFocusMinutes
         case pomodoroBreakMinutes
         case pomodoroCycle
+        case musicEnabled
+        case musicGenre
+        case musicVolume
         case timerDefaultsVersion
     }
 
@@ -123,6 +133,37 @@ public struct FocusSettings: Codable, Equatable, Sendable {
     public func save(to defaults: UserDefaults) {
         if let data = try? JSONEncoder().encode(self) {
             defaults.set(data, forKey: Self.defaultsKey)
+        }
+    }
+}
+
+public enum MusicGenre: String, Codable, Sendable, CaseIterable, Identifiable {
+    case chill
+    case cafe
+    case asian
+    case softIndieDnb = "soft_indie_dnb"
+    case popPunk = "pop_punk"
+    case rusPopPunk = "rus_pop_punk"
+    case mix
+
+    public var id: String { rawValue }
+
+    public var title: String {
+        switch self {
+        case .chill: "Chill"
+        case .cafe: "Jazzy Cafe"
+        case .asian: "Asian"
+        case .softIndieDnb: "Soft Indie DnB"
+        case .popPunk: "Pop/Punk Rock"
+        case .rusPopPunk: "Russian Pop/Punk"
+        case .mix: "Микс"
+        }
+    }
+
+    public var fadesOut: Bool {
+        switch self {
+        case .chill, .cafe, .asian, .mix: true
+        case .softIndieDnb, .popPunk, .rusPopPunk: false
         }
     }
 }

@@ -79,6 +79,25 @@ struct FocusSettingsPane: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
+            Section("Музыка") {
+                Toggle("Музыка во время фокуса", isOn: $focus.settings.musicEnabled)
+                Picker("Жанр", selection: $focus.settings.musicGenre) {
+                    ForEach(MusicGenre.allCases) { genre in
+                        Text(genre.title).tag(genre)
+                    }
+                }
+                .disabled(!focus.settings.musicEnabled)
+                HStack {
+                    Image(systemName: "speaker.fill").foregroundStyle(.secondary).accessibilityHidden(true)
+                    Slider(value: $focus.settings.musicVolume, in: 0...1)
+                        .accessibilityLabel("Громкость музыки")
+                    Image(systemName: "speaker.wave.3.fill").foregroundStyle(.secondary).accessibilityHidden(true)
+                }
+                .disabled(!focus.settings.musicEnabled)
+                Text("Лоу-фай с chillify.me. Играет только во время фокуса, на паузе и перерыве — тишина. Нужен интернет.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
             Section("Сессии") {
                 Stepper("Напомнить о ждущей сессии через \(focus.settings.stalledReminderMinutes) мин", value: $focus.settings.stalledReminderMinutes, in: Self.stalledReminderRange)
                 Picker("Новые сессии", selection: $focus.settings.autoBindNewSessions) {

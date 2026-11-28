@@ -120,7 +120,12 @@ final class FocusCoordinator {
     private(set) var hiddenRows: [HubRow] = []
     private(set) var sessionListOnboarded: Bool
     private(set) var todaySummary = TodaySummary(focusSeconds: 0, distractionSeconds: 0)
-    private(set) var pomodoro: PomodoroSnapshot?
+    private(set) var pomodoro: PomodoroSnapshot? {
+        didSet { syncMusic() }
+    }
+    var music: ChillifyPlayer? {
+        didSet { syncMusic() }
+    }
     private(set) var pomodoroCountToday = 0
     private(set) var pendingStartTaskID: String?
     private(set) var focusTaskOverrideID: String? {
@@ -186,6 +191,7 @@ final class FocusCoordinator {
             turnTracker.delay = settings.nextActionDelay
             distractionTracker.threshold = settings.distractionThreshold
             onSettingsChanged?(settings)
+            syncMusic()
         }
     }
 
@@ -1751,6 +1757,15 @@ final class FocusCoordinator {
         if snapshot != pomodoro {
             pomodoro = snapshot
         }
+    }
+
+    nonisolated static func musicShouldPlay(settings: FocusSettings, pomodoro: PomodoroSnapshot?) -> Bool {
+        guard settings.musicEnabled, let pomodoro else { return false }
+        return pomodoro.phase == .focus && !pomodoro.isPaused
+    }
+
+    private func syncMusic() {
+        music?.update(playing: Self.musicShouldPlay(settings: settings, pomodoro: pomodoro), genre: settings.musicGenre, volume: settings.musicVolume)
     }
 
     func markSessionSeen(_ sessionID: String, now: Date = .now) {
