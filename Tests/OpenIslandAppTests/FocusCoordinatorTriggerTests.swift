@@ -77,7 +77,7 @@ struct FocusCoordinatorTriggerTests {
     }
 
     @Test
-    func quickFocusTakesOpenUnboundSessionsWhenAutoBindIsOn() throws {
+    func quickFocusTakesAllOpenSessionsWhenAutoBindIsOn() throws {
         let h = try make()
         let c = h.coordinator
         c.settings.autoBindNewSessions = true
@@ -90,7 +90,8 @@ struct FocusCoordinatorTriggerTests {
 
         let task = try #require(c.currentTask)
         #expect(c.taskID(forSession: "free") == task.id)
-        #expect(c.taskID(forSession: "busy") == other)
+        #expect(c.taskID(forSession: "busy") == task.id)
+        #expect(task.id != other)
     }
 
     @Test
@@ -156,44 +157,14 @@ struct FocusCoordinatorTriggerTests {
 
 
     @Test
-    func dayStartOncePerDay() throws {
+    func morningScreenNeverAppearsByItself() throws {
         let h = try make(dayStart: true)
         let c = h.coordinator
-        let early = Calendar.current.date(from: DateComponents(year: 2026, month: 10, day: 10, hour: 4))!
-        c.frontmostDidChange(FrontmostSample(bundleID: "com.apple.Terminal", url: nil, at: early))
-        #expect(c.card == nil)
-
         c.frontmostDidChange(FrontmostSample(bundleID: "com.apple.Safari", url: nil, at: t0))
-        #expect(c.card == .dayStart)
-        #expect(c.dayPlan(day: t0)?.dayStartShownAt == t0)
-        c.perform(.dismiss, now: t0.addingTimeInterval(5))
-        c.frontmostDidChange(FrontmostSample(bundleID: "com.apple.Terminal", url: nil, at: t0.addingTimeInterval(60)))
         #expect(c.card == nil)
-
         let tomorrow = t0.addingTimeInterval(86_400)
-        c.frontmostDidChange(FrontmostSample(bundleID: "com.apple.Safari", url: nil, at: tomorrow))
-        #expect(c.card == .dayStart)
-        c.perform(.dismiss, now: tomorrow)
-
-        c.settings.dayStartEnabled = false
-        let later = t0.addingTimeInterval(2 * 86_400)
-        c.frontmostDidChange(FrontmostSample(bundleID: "com.apple.Terminal", url: nil, at: later))
+        c.frontmostDidChange(FrontmostSample(bundleID: "com.apple.Terminal", url: nil, at: tomorrow))
         #expect(c.card == nil)
-        c.openDayStart(now: later)
-        #expect(c.card == .dayStart)
-    }
-
-    @Test
-    func dayStartWaitsForHigherCard() throws {
-        let h = try make(dayStart: true)
-        let c = h.coordinator
-        c.setHooksInstalled(false, now: t0)
-        c.frontmostDidChange(FrontmostSample(bundleID: "com.apple.Terminal", url: nil, at: t0))
-        #expect(c.card == .onboarding)
-        #expect(c.dayPlan(day: t0)?.dayStartShownAt == nil)
-        c.dismissOnboarding(now: t0.addingTimeInterval(1))
-        c.frontmostDidChange(FrontmostSample(bundleID: "com.apple.Safari", url: nil, at: t0.addingTimeInterval(2)))
-        #expect(c.card == .dayStart)
     }
 
     @Test

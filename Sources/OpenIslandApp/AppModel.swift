@@ -554,7 +554,8 @@ final class AppModel {
             NSSound(named: NSSound.Name(name))?.play()
         }
         focus.presentCard = { [weak self] in
-            self?.notchOpen(reason: .notification, surface: .sessionList())
+            guard let self, self.notchStatus != .opened else { return }
+            self.notchOpen(reason: .notification, surface: .sessionList())
         }
         focus.lookupSessionLabels = { ids in
             await Task.detached(priority: .utility) {
@@ -1282,12 +1283,18 @@ final class AppModel {
         dismissOverlayForJump()
         jumpTask?.cancel()
         jumpTask = Task { [weak self] in
-            let desktopID = await Task.detached(priority: .userInitiated) {
-                ClaudeDesktopSessionLocator().desktopSessionID(forCLISessionID: cliSessionID)
+            let url = await Task.detached(priority: .userInitiated) { () -> URL? in
+                if let desktopID = ClaudeDesktopSessionLocator().desktopSessionID(forCLISessionID: cliSessionID),
+                   let url = ClaudeDesktopSessionLocator.continueURL(desktopSessionID: desktopID) {
+                    return url
+                }
+                return ClaudeRemoteControlLocator().bridgeSessionID(forCLISessionID: cliSessionID)
+                    .flatMap { id in
+                        ClaudeRemoteControlLocator.openURL(bridgeSessionID: id) { NSWorkspace.shared.urlForApplication(toOpen: $0) != nil }
+                    }
             }.value
             guard !Task.isCancelled, let self else { return }
-            guard let desktopID, let url = ClaudeDesktopSessionLocator.continueURL(desktopSessionID: desktopID),
-                  NSWorkspace.shared.open(url) else {
+            guard let url, NSWorkspace.shared.open(url) else {
                 self.jump(to: fallback)
                 return
             }
@@ -1507,7 +1514,7 @@ final class AppModel {
               let session = state.session(id: sessionID) else {
             return
         }
-        if session.phase == .completed, !focus.opensIslandOnCompletion(sessionID: sessionID) {
+        if session.phase == .completed {
             return
         }
 

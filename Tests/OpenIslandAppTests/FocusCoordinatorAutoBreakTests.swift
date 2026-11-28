@@ -212,18 +212,4 @@ struct FocusCoordinatorAutoBreakTests {
         c.bindNewSession(sessionID: "new", taskID: b, now: at(2))
         #expect(c.currentTask?.id == a)
     }
-
-    @Test
-    func completionOpensIslandOnlyForFocusTaskSessions() throws {
-        let h = try make()
-        let c = h.coordinator
-        let a = try task(h, "A")
-        c.offerTaskChoiceOnLaunch(now: at(0))
-        c.sessionsDidChange([session("mine", .running, at: at(0)), session("other", .running, at: at(0))], now: at(0))
-        c.bind(sessionID: "mine", taskID: a, now: at(1))
-        #expect(!c.opensIslandOnCompletion(sessionID: "mine"))
-        c.takeTask(taskID: a, now: at(2))
-        #expect(c.opensIslandOnCompletion(sessionID: "mine"))
-        #expect(!c.opensIslandOnCompletion(sessionID: "other"))
-    }
 }

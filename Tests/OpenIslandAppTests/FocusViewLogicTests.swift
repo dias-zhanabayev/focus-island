@@ -1159,3 +1159,18 @@ struct FocusViewLogicTests {
         #expect(FocusIslandSection.showsCardView(.dayStart))
     }
 }
+
+struct SessionHubFlatListTests {
+    @Test
+    func flatListIsNewestFirstWithoutGroups() {
+        let base = Date(timeIntervalSince1970: 1_000)
+        func row(_ id: String, _ group: HubGroup, _ minutesAgo: Double) -> HubRow {
+            HubRow(id: id, group: group, taskID: nil, title: id, projectName: "p", detail: "", since: base.addingTimeInterval(-minutesAgo * 60), progress: nil)
+        }
+        let rows = [row("old", .review, 431), row("run", .running, 3), row("mid", .idle, 35)]
+        #expect(SessionHubView.flatRows(rows: rows).map(\.id) == ["run", "mid", "old"])
+        #expect(SessionHubView.flatLimit == 10)
+        #expect(SessionHubView.flatCaption(11) == "Сессии · 11")
+        #expect(SessionHubView.showAllTitle(14) == "Показать все · 14")
+    }
+}

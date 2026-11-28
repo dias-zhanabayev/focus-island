@@ -135,6 +135,12 @@ public final class PomodoroStore: Sendable {
         }
     }
 
+    public func latest() throws -> Pomodoro? {
+        try store.dbQueue.read { db in
+            try Pomodoro.order(Column("startedAt").desc).fetchOne(db)
+        }
+    }
+
     public func active() throws -> Pomodoro? {
         try store.dbQueue.read { db in try Self.fetchActive(db) }
     }

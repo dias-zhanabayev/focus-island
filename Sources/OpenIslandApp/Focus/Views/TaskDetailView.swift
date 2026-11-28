@@ -263,7 +263,7 @@ struct TaskDetailView: View {
                 Button {
                     closeTask()
                 } label: {
-                    Label("Закрыть задачу", systemImage: "checkmark")
+                    Label("Завершить", systemImage: "checkmark")
                 }
                 .buttonStyle(FocusButtonStyle(kind: .done))
             }

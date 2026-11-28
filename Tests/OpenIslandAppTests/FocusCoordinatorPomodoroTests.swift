@@ -317,6 +317,28 @@ struct FocusCoordinatorPomodoroTests {
     }
 
     @Test
+    func openingSessionAfterBreakSkipsTimer() throws {
+        let h = try make()
+        let c = h.coordinator
+        let a = try task(h, "A")
+        c.sessionsDidChange([session("s1", .completed, at: at(0))], now: at(0))
+        c.bind(sessionID: "s1", taskID: a, now: at(0))
+        c.startPomodoro(taskID: a, minutes: 5, now: at(0))
+        c.tick(now: at(300))
+        c.startBreak(nextStep: nil, minutes: 5, now: at(300))
+        c.tick(now: at(600))
+        guard case .breakEnd = c.card else {
+            Issue.record("expected breakEnd, got \(String(describing: c.card))")
+            return
+        }
+        #expect(FocusIslandSection.showsSessionList(under: c.card!))
+        c.requestJump(sessionID: "s1", now: at(601))
+        #expect(c.card == nil)
+        #expect(c.pomodoro == nil)
+        #expect(h.box.jumps.last == "s1")
+    }
+
+    @Test
     func extendActiveBreakAddsTime() throws {
         let h = try make()
         let c = h.coordinator

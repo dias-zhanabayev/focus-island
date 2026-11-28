@@ -106,6 +106,7 @@ final class FocusCoordinator {
     static let onboardingTaskAddedKey = "focus.onboarding.taskAdded"
     static let onboardingDismissedKey = "focus.onboarding.dismissed"
     static let sessionListOnboardedKey = "focus.sessionList.onboarded"
+    static let focusTaskKey = "focus.taskInFocus"
     static let onboardingPresentedKey = "focus.onboarding.presented"
     static let boundSessionsDoneWindow: TimeInterval = 7 * 86_400
     static let recoveredEndCardWindow: TimeInterval = 2 * 3600
@@ -122,7 +123,15 @@ final class FocusCoordinator {
     private(set) var pomodoro: PomodoroSnapshot?
     private(set) var pomodoroCountToday = 0
     private(set) var pendingStartTaskID: String?
-    private(set) var focusTaskOverrideID: String?
+    private(set) var focusTaskOverrideID: String? {
+        didSet {
+            if let focusTaskOverrideID {
+                defaults.set(focusTaskOverrideID, forKey: Self.focusTaskKey)
+            } else {
+                defaults.removeObject(forKey: Self.focusTaskKey)
+            }
+        }
+    }
     private(set) var focusCleared = false
     private(set) var lastJumpedSessionID: String?
     private(set) var todaySummaryRefreshedAt: Date?
@@ -267,6 +276,7 @@ final class FocusCoordinator {
         self.onboardingTaskAdded = defaults.bool(forKey: Self.onboardingTaskAddedKey)
         self.onboardingDismissed = defaults.bool(forKey: Self.onboardingDismissedKey)
         self.sessionListOnboarded = defaults.bool(forKey: Self.sessionListOnboardedKey)
+        self.focusTaskOverrideID = defaults.string(forKey: Self.focusTaskKey)
         self.defaults = defaults
         self.launcher = launcher
         self.promptSender = promptSender
@@ -468,13 +478,20 @@ final class FocusCoordinator {
                     changed = true
                 }
             }
+            if !isNew,
+               session.phase == .running,
+               previousPhases[session.id] != .running,
+               let record = try? history.session(id: session.id),
+               reviveIfForgotten(record, session: session, now: now) {
+                changed = true
+            }
             let previous = previousPhases[session.id]
-            if session.phase == .completed && previous != .completed {
+            if session.phase == .completed && previous != .completed && !session.isQuietlySettled {
                 unseenCompleted.insert(session.id)
             } else if session.phase == .running {
                 unseenCompleted.remove(session.id)
             }
-            if previous == .running && session.phase == .completed {
+            if previous == .running && session.phase == .completed && !session.isQuietlySettled {
                 finishedTurns.append(session.id)
             }
             if PlanProgress.from(session.claudeMetadata?.activeTasks ?? []) != nil {
@@ -670,6 +687,9 @@ final class FocusCoordinator {
         let lastSeen = record?.lastSeenAt ?? record?.lastActivityAt
         let targetTaskID = taskID(forSession: sessionID)
         let otherTask = targetTaskID != nil && targetTaskID != currentTask?.id
+        if case .breakEnd = card {
+            endBreakWithoutTimer(now: now)
+        }
         if let card, card.priority <= FocusCard.reEntry(sessionID: sessionID).priority || card == .returned(sessionID: sessionID) {
             closeCard(reacted: true, now: now)
         }
@@ -863,7 +883,7 @@ final class FocusCoordinator {
     }
 
     var clearableSessionCount: Int {
-        listRows.filter { $0.taskID == nil && $0.group != .waiting }.count
+        listRows.filter { $0.group != .waiting }.count
     }
 
     func addNewSessions(_ sessionIDs: [String], now: Date = .now) {
@@ -892,11 +912,38 @@ final class FocusCoordinator {
     }
 
     func clearSessionList(now: Date = .now) {
-        let ids = listRows.filter { $0.taskID == nil && $0.group != .waiting }.map(\.id)
+        let rows = listRows.filter { $0.group != .waiting }
+        for row in rows where row.taskID != nil {
+            attempt { try boardService.bindSession(sessionID: row.id, toTaskID: nil) }
+        }
+        let ids = rows.map(\.id)
         attempt { try history.hide(sessionIDs: ids, at: now) }
+        pendingBindingSessionIDs.removeAll { ids.contains($0) }
         markSessionListOnboarded()
-        reloadLiveRecords()
+        reload()
+        syncSessionSpans(latestSessions, now: now)
         refreshHub(now: now)
+    }
+
+    func clearableTaskSessionCount(taskID: String) -> Int {
+        clearableTaskSessionIDs(taskID: taskID).count
+    }
+
+    func clearTaskSessions(taskID: String, now: Date = .now) {
+        let ids = clearableTaskSessionIDs(taskID: taskID)
+        guard !ids.isEmpty else { return }
+        for id in ids {
+            attempt { try boardService.bindSession(sessionID: id, toTaskID: nil) }
+        }
+        attempt { try history.hide(sessionIDs: ids, at: now) }
+        pendingBindingSessionIDs.removeAll { ids.contains($0) }
+        reload()
+        syncSessionSpans(latestSessions, now: now)
+        refreshHub(now: now)
+    }
+
+    private func clearableTaskSessionIDs(taskID: String) -> [String] {
+        hubRows.filter { $0.taskID == taskID && $0.group != .waiting && $0.group != .done }.map(\.id)
     }
 
     private func markSessionListOnboarded() {
@@ -1240,8 +1287,21 @@ final class FocusCoordinator {
         refreshHub(now: now)
     }
 
+    private func lastFocusTaskID() -> String? {
+        if let id = focusTaskOverrideID, board.task(id: id)?.boardColumn == .inProgress {
+            return id
+        }
+        return (try? pomodoroStore.latest())?.taskId
+    }
+
     func offerTaskChoiceOnLaunch(now: Date = .now) {
         guard pomodoro == nil else { return }
+        if let id = lastFocusTaskID(), board.task(id: id)?.boardColumn == .inProgress {
+            focusTaskOverrideID = id
+            focusCleared = false
+            refreshHub(now: now)
+            return
+        }
         focusCleared = true
         refreshHub(now: now)
         guard card == nil else { return }
@@ -1254,11 +1314,6 @@ final class FocusCoordinator {
         if currentTask == nil {
             startTask(taskID: taskID, sessionIDs: [], focusMinutes: nil, now: now)
         }
-    }
-
-    func opensIslandOnCompletion(sessionID: String) -> Bool {
-        guard let task = currentTask else { return false }
-        return taskID(forSession: sessionID) == task.id
     }
 
     @discardableResult
@@ -1290,7 +1345,7 @@ final class FocusCoordinator {
         attempt { try dayPlans.markDayStartShown(day: day, at: now) }
         dayStartShownDay = day
         reload()
-        let sessionIDs = settings.autoBindNewSessions ? listRows.filter { $0.taskID == nil && !$0.group.isSettled }.map(\.id) : []
+        let sessionIDs = settings.autoBindNewSessions ? listRows.filter { !$0.group.isSettled }.map(\.id) : []
         startTask(taskID: created.id, sessionIDs: sessionIDs, focusMinutes: settings.pomodoroFocusMinutes, now: now)
     }
 
@@ -1718,7 +1773,6 @@ final class FocusCoordinator {
         frontmostIsDistracting = DistractionClassifier.isDistracting(bundleID: sample.bundleID, url: sample.url, stopList: settings.stopList)
         defer { refreshDistractionTarget() }
         syncYouSpan(now: sample.at)
-        presentDayStartIfDue(now: sample.at)
         guard settings.distractionEnabled else { return }
         let events = distractionTracker.observe(sample, anySessionRunning: hasRunningSession && !isOnBreak, stopList: settings.stopList)
         handleDistractionEvents(events, at: sample.at)
@@ -2110,6 +2164,29 @@ final class FocusCoordinator {
         return true
     }
 
+    private func reviveIfForgotten(_ record: SessionRecord, session: AgentSession, now: Date) -> Bool {
+        let taskClosed = record.taskId != nil && board.task(id: record.taskId).map { $0.boardColumn == .done } ?? true
+        let focusTask = currentTask.flatMap { $0.boardColumn == .inProgress ? $0 : nil }
+        let boundElsewhere = settings.autoBindNewSessions && !taskClosed && record.taskId != nil
+            && focusTask != nil && record.taskId != focusTask?.id
+        guard taskClosed || boundElsewhere || (record.taskId == nil && record.hiddenAt != nil) else { return false }
+        if taskClosed {
+            attempt { try boardService.bindSession(sessionID: session.id, toTaskID: nil) }
+        }
+        if settings.autoBindNewSessions, let task = currentTask, task.boardColumn == .inProgress {
+            attempt { try history.unhide(sessionIDs: [session.id]) }
+            autoBind(sessionID: session.id, to: task, cwd: session.jumpTarget?.workingDirectory, now: now)
+        } else if settings.autoBindNewSessions {
+            attempt { try history.unhide(sessionIDs: [session.id]) }
+        } else {
+            attempt { try history.hide(sessionIDs: [session.id], at: now) }
+            if !pendingBindingSessionIDs.contains(session.id) {
+                pendingBindingSessionIDs.append(session.id)
+            }
+        }
+        return true
+    }
+
     private func autoBind(sessionID: String, to task: FocusTask, cwd: String?, now: Date) {
         var task = task
         attempt { try boardService.bindSession(sessionID: sessionID, toTaskID: task.id, now: now) }
@@ -2206,23 +2283,6 @@ final class FocusCoordinator {
         } catch {
             logger.error("span open failed: \(String(describing: error), privacy: .public)")
         }
-    }
-
-    private func presentDayStartIfDue(now: Date) {
-        guard settings.dayStartEnabled else { return }
-        let key = DayPlanStore.dayKey(now)
-        guard dayStartShownDay != key else { return }
-        let plan = try? dayPlans.plan(day: key)
-        if plan?.dayStartShownAt != nil {
-            dayStartShownDay = key
-            return
-        }
-        guard DayStartPolicy.shouldShow(enabled: true, plan: plan, now: now, calendar: .current),
-              canPresent(.dayStart) else { return }
-        attempt { try dayPlans.markDayStartShown(day: key, at: now) }
-        dayStartShownDay = key
-        workRevision += 1
-        present(.dayStart, now: now)
     }
 
     private func startDay(taskIDs: [String], now: Date) {

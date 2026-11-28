@@ -248,14 +248,14 @@ struct AllSessionsDoneCard: View {
                 Text("Все сессии задачи завершены")
                     .font(.system(size: 13, weight: .semibold))
                     .foregroundStyle(FocusStyle.primaryText)
-                Text("Закрыть задачу или открыть новую сессию?")
+                Text("Завершить задачу или открыть новую сессию?")
                     .font(FocusStyle.secondaryFont)
                     .foregroundStyle(FocusStyle.secondaryText)
                     .lineLimit(1)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             Button(action: onClose) {
-                Label("Закрыть задачу", systemImage: "checkmark")
+                Label("Завершить", systemImage: "checkmark")
             }
             .buttonStyle(FocusButtonStyle(kind: .done, height: 28))
             Button("Не сейчас", action: onDismiss)

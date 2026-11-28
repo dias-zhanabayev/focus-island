@@ -28,6 +28,11 @@ struct FocusIslandSection: View {
             }
             if let card = focus.card, Self.showsCardView(card) {
                 cardView(card)
+                if Self.showsSessionList(under: card) {
+                    SessionHubView(focus: focus, openSettings: openSettings, listOnly: true)
+                        .padding(.top, 8)
+                        .id(card.pomodoroID)
+                }
             }
             if focus.currentTask == nil, Self.showsBinding(card: focus.card), let sessionID = focus.bindingRequestIDs.first {
                 BindingCard(focus: focus, sessionID: sessionID).id(sessionID)
@@ -50,6 +55,11 @@ struct FocusIslandSection: View {
         case nil, .returned: false
         default: true
         }
+    }
+
+    static func showsSessionList(under card: FocusCard) -> Bool {
+        if case .breakEnd = card { return true }
+        return false
     }
 
     static func showsBinding(card: FocusCard?) -> Bool {

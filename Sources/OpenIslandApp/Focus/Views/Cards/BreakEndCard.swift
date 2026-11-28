@@ -47,7 +47,7 @@ struct BreakEndCard: View {
     private var focusCard: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 10) {
-                Button(PomodoroFormat.startFocusTitle(minutes: selectedMinutes)) {
+                Button(Self.continueTitle(minutes: selectedMinutes)) {
                     focus.resumeAfterBreak(minutes: selectedMinutes)
                 }
                 .buttonStyle(FocusButtonStyle(kind: .primary, height: 38, horizontalPadding: 18))
@@ -102,6 +102,10 @@ struct BreakEndCard: View {
     nonisolated static func restedLine(finishedSessionTitles: [String]) -> String? {
         guard !finishedSessionTitles.isEmpty else { return nil }
         return "Пока отдыхал: Claude закончил " + finishedSessionTitles.map { "«\($0)»" }.joined(separator: ", ")
+    }
+
+    nonisolated static func continueTitle(minutes: Int) -> String {
+        "▶ Продолжить фокус · \(minutes) мин"
     }
 
     nonisolated static func extendTitle(minutes: Int) -> String {

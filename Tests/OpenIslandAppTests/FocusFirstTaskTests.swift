@@ -208,6 +208,58 @@ struct FocusFirstTaskTests {
     }
 
     @Test
+    func clearingTaskSessionsHidesThemButKeepsWaitingOnes() throws {
+        let c = try make()
+        _ = c.startFirstTask(title: "Задача", sessionIDs: [], criterion: nil, now: t0)
+        let first = session("first", .completed, at: t0.addingTimeInterval(2))
+        c.sessionsDidChange([first], now: t0.addingTimeInterval(2))
+        let t1 = t0.addingTimeInterval(5)
+        let sessions = [first, session("s", .running, at: t1), session("w", .waitingForApproval, at: t1)]
+        c.sessionsDidChange(sessions, now: t1)
+        c.addNewSessions(["s", "w"], now: t1)
+        let taskID = try #require(c.currentTask?.id)
+        #expect(c.clearableTaskSessionCount(taskID: taskID) == 2)
+
+        c.clearTaskSessions(taskID: taskID, now: t1)
+        #expect(c.clearableTaskSessionCount(taskID: taskID) == 0)
+        #expect(c.taskID(forSession: "w") == taskID)
+        #expect(c.taskID(forSession: "s") == nil)
+        #expect(Set(c.hiddenRows.map(\.id)) == ["first", "s"])
+        #expect(c.currentTask?.id == taskID)
+    }
+
+    @Test
+    func writingInSessionOfClosedTaskMovesItToTaskInFocus() throws {
+        let c = try make()
+        c.settings.autoBindNewSessions = true
+        let old = c.startFirstTask(title: "Старая", sessionIDs: [], criterion: nil, now: t0)
+        c.sessionsDidChange([session("s", .completed, at: t0.addingTimeInterval(2))], now: t0.addingTimeInterval(2))
+        let oldTaskID = try #require(c.taskID(forSession: "s"))
+        c.closeTask(taskID: oldTaskID, showPicker: false, now: t0.addingTimeInterval(3))
+        _ = old
+        let t1 = t0.addingTimeInterval(10)
+        c.startQuickFocus(now: t1)
+        let focusTaskID = try #require(c.currentTask?.id)
+        #expect(focusTaskID != oldTaskID)
+
+        c.sessionsDidChange([session("s", .running, at: t1.addingTimeInterval(5), prompt: "новая задача")], now: t1.addingTimeInterval(5))
+        #expect(c.taskID(forSession: "s") == focusTaskID)
+    }
+
+    @Test
+    func writingInHiddenSessionOffersItAsNewInManualMode() throws {
+        let c = try make()
+        c.sessionsDidChange([session("s", .completed, at: t0)], now: t0)
+        c.skipBinding(sessionID: "s", now: t0)
+        #expect(c.hiddenRows.map(\.id) == ["s"])
+
+        c.sessionsDidChange([session("s", .running, at: t0.addingTimeInterval(5), prompt: "ещё")], now: t0.addingTimeInterval(5))
+        #expect(c.newSessionIDs == ["s"])
+        c.addNewSessions(["s"], now: t0.addingTimeInterval(6))
+        #expect(c.listRows.map(\.id) == ["s"])
+    }
+
+    @Test
     func keepingAllSessionsAsksOnlyOnce() throws {
         let c = try make()
         c.settings.autoBindNewSessions = true
@@ -226,5 +278,86 @@ struct FocusFirstTaskTests {
         #expect(c.boundSessionNotice != nil)
         c.tick(now: t0.addingTimeInterval(10 + FocusCoordinator.closedTaskLifetime))
         #expect(c.boundSessionNotice == nil)
+    }
+
+    @Test
+    func taskInFocusSurvivesRelaunch() throws {
+        let store = try FocusStore.inMemory()
+        let defaults = UserDefaults(suiteName: "focus-relaunch-\(UUID().uuidString)")!
+        func launch() -> FocusCoordinator {
+            let c = FocusCoordinator(store: store, defaults: defaults, launcher: RecordingLauncher(), promptSender: RecordingPromptSender(result: .unsupported), gitDiff: StubGitDiff(files: []), clipboard: { _ in }, runBackfill: false)
+            c.settings.autoBindNewSessions = false
+            c.settings.dayStartEnabled = false
+            c.start(initialSessions: [], now: t0)
+            return c
+        }
+        let first = launch()
+        first.startQuickFocus(now: t0)
+        let taskID = try #require(first.currentTask?.id)
+        first.stopPomodoro(now: t0.addingTimeInterval(60))
+        let second = launch()
+        second.offerTaskChoiceOnLaunch(now: t0.addingTimeInterval(120))
+        #expect(second.currentTask?.id == taskID)
+    }
+
+    @Test
+    func clearingListAlsoRemovesSessionsBoundToOtherTasks() throws {
+        let c = try make()
+        c.createTask(title: "Старая", column: .inProgress, projectPath: nil)
+        let other = try #require(c.board.tasks.first { $0.title == "Старая" })
+        c.sessionsDidChange([session("bound", .completed, at: t0), session("free", .completed, at: t0), session("ask", .waitingForAnswer, at: t0)], now: t0)
+        c.bind(sessionID: "bound", taskID: other.id, now: t0)
+        c.offerTaskChoiceOnLaunch(now: t0)
+        #expect(c.currentTask == nil)
+        c.clearSessionList(now: t0)
+        #expect(c.listRows.map(\.id) == ["ask"])
+        #expect(c.clearableSessionCount == 0)
+    }
+
+    @Test
+    func launchFallsBackToLastPomodoroTask() throws {
+        let store = try FocusStore.inMemory()
+        func launch(_ suite: String) -> FocusCoordinator {
+            let c = FocusCoordinator(store: store, defaults: UserDefaults(suiteName: suite)!, launcher: RecordingLauncher(), promptSender: RecordingPromptSender(result: .unsupported), gitDiff: StubGitDiff(files: []), clipboard: { _ in }, runBackfill: false)
+            c.settings.autoBindNewSessions = false
+            c.settings.dayStartEnabled = false
+            c.start(initialSessions: [], now: t0)
+            return c
+        }
+        let first = launch("focus-last-a-\(UUID().uuidString)")
+        first.startQuickFocus(now: t0)
+        let taskID = try #require(first.currentTask?.id)
+        first.stopPomodoro(now: t0.addingTimeInterval(60))
+        let second = launch("focus-last-b-\(UUID().uuidString)")
+        second.offerTaskChoiceOnLaunch(now: t0.addingTimeInterval(120))
+        #expect(second.currentTask?.id == taskID)
+    }
+
+    @Test
+    func writingInSessionOfOtherTaskMovesItToFocus() throws {
+        let c = try make()
+        c.settings.autoBindNewSessions = true
+        c.createTask(title: "Старая", column: .inProgress, projectPath: nil)
+        let old = try #require(c.board.tasks.first { $0.title == "Старая" })
+        c.sessionsDidChange([session("ppa", .completed, at: t0)], now: t0)
+        c.bind(sessionID: "ppa", taskID: old.id, now: t0)
+        c.startQuickFocus(now: t0.addingTimeInterval(10))
+        let focusID = try #require(c.currentTask?.id)
+        #expect(focusID != old.id)
+        c.sessionsDidChange([session("ppa", .running, at: t0.addingTimeInterval(20))], now: t0.addingTimeInterval(20))
+        #expect(c.focusTaskSessions.map(\.id) == ["ppa"])
+    }
+
+    @Test
+    func quickFocusTakesLiveSessionsOfOtherTasks() throws {
+        let c = try make()
+        c.settings.autoBindNewSessions = true
+        c.createTask(title: "Старая", column: .inProgress, projectPath: nil)
+        let old = try #require(c.board.tasks.first { $0.title == "Старая" })
+        c.sessionsDidChange([session("ppa", .completed, at: t0)], now: t0)
+        c.bind(sessionID: "ppa", taskID: old.id, now: t0)
+        c.offerTaskChoiceOnLaunch(now: t0)
+        c.startQuickFocus(now: t0.addingTimeInterval(10))
+        #expect(c.focusTaskSessions.map(\.id) == ["ppa"])
     }
 }

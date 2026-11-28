@@ -88,7 +88,6 @@ struct FocusSettingsPane: View {
                 Text(Self.newSessionsCaption(autoBind: focus.settings.autoBindNewSessions))
                     .font(.caption)
                     .foregroundStyle(.secondary)
-                Toggle("Утренний экран «Начало дня»", isOn: $focus.settings.dayStartEnabled)
             }
             Section("Отвлечения") {
                 Toggle("Замечать отвлечения", isOn: $focus.settings.distractionEnabled)

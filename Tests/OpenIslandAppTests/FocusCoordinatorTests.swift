@@ -139,6 +139,18 @@ struct FocusCoordinatorTests {
     }
 
     @Test
+    func quietlySettledSessionIsNotReportedAsFreshlyDone() throws {
+        let (coordinator, _, _) = try makeCoordinator()
+        coordinator.start(initialSessions: [], now: t0)
+        coordinator.sessionsDidChange([session("s1", .running, at: t0)], now: t0)
+        var settled = session("s1", .completed, at: t0)
+        settled.isQuietlySettled = true
+        coordinator.sessionsDidChange([settled], now: t0.addingTimeInterval(120))
+        #expect(coordinator.hubRows.first { $0.id == "s1" }?.group != .review)
+        #expect(coordinator.hubRows.first { $0.id == "s1" }?.group != .running)
+    }
+
+    @Test
     func newSessionIsRecordedAndAsksForBinding() throws {
         let (coordinator, store, _) = try makeCoordinator()
         coordinator.start(initialSessions: [], now: t0)

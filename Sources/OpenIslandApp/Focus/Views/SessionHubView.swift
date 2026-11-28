@@ -5,8 +5,9 @@ import SwiftUI
 struct SessionHubView: View {
     @Bindable var focus: FocusCoordinator
     var openSettings: (() -> Void)?
+    var listOnly = false
     @State private var chosenMinutes: Int?
-    @State private var showsHidden = false
+    @State private var showsAllSessions = false
 
     struct HubSection: Equatable {
         let group: HubGroup
@@ -14,23 +15,68 @@ struct SessionHubView: View {
     }
 
     var body: some View {
-        if Self.showsOnlyTaskChoice(hasTask: focus.currentTask != nil, pomodoroActive: focus.pomodoro != nil) {
+        if listOnly {
+            sessionList
+        } else if Self.showsOnlyTaskChoice(hasTask: focus.currentTask != nil, pomodoroActive: focus.pomodoro != nil) {
             VStack(alignment: .leading, spacing: 16) {
                 header
                 quickFocusCard
                 listSetup
-                if Self.liveCount(rows: focus.listRows) > 0 {
-                    let primaryID = Self.primaryRowID(rows: focus.listRows)
-                    ForEach(Self.groups(rows: focus.listRows), id: \.group) { group in
-                        groupView(group, primaryID: primaryID)
-                    }
+                if !focus.listRows.isEmpty {
+                    flatList
                 }
-                hiddenSection
-                PickTaskCard(focus: focus, showsHeader: false)
             }
         } else {
             hub
         }
+    }
+
+    private var sessionList: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            listSetup
+            if let task = focus.currentTask {
+                focusBlock(task)
+            } else if !focus.listRows.isEmpty {
+                flatList
+            }
+        }
+    }
+
+    private var flatList: some View {
+        let all = Self.flatRows(rows: focus.listRows)
+        let shown = showsAllSessions ? all : Array(all.prefix(Self.flatLimit))
+        let primaryID = Self.primaryRowID(rows: all)
+        return VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                FocusSectionCaption(Self.flatCaption(all.count))
+                Spacer(minLength: 0)
+                if focus.clearableSessionCount > 0 {
+                    Button("Очистить") { focus.clearSessionList() }
+                        .buttonStyle(FocusButtonStyle(kind: .quiet, height: 24, horizontalPadding: 0))
+                }
+            }
+            ForEach(shown) { row in
+                rowView(row, primaryID: primaryID, isHere: row.id == focus.hereSessionID, flat: true)
+            }
+            if all.count > Self.flatLimit {
+                Button(showsAllSessions ? "Свернуть" : Self.showAllTitle(all.count)) { showsAllSessions.toggle() }
+                    .buttonStyle(FocusButtonStyle(kind: .quiet, height: 24, horizontalPadding: 0))
+            }
+        }
+    }
+
+    nonisolated static let flatLimit = 10
+
+    nonisolated static func flatRows(rows: [HubRow]) -> [HubRow] {
+        rows.sorted { $0.since > $1.since }
+    }
+
+    nonisolated static func flatCaption(_ count: Int) -> String {
+        "Сессии · \(count)"
+    }
+
+    nonisolated static func showAllTitle(_ count: Int) -> String {
+        "Показать все · \(count)"
     }
 
     private var quickFocusCard: some View {
@@ -64,12 +110,8 @@ struct SessionHubView: View {
             } else if focus.listRows.isEmpty {
                 emptyState
             } else {
-                let primaryID = Self.primaryRowID(rows: focus.listRows)
-                ForEach(Self.groups(rows: focus.listRows), id: \.group) { group in
-                    groupView(group, primaryID: primaryID)
-                }
+                flatList
             }
-            hiddenSection
             footer
             if let task = focus.currentTask, let sessionID = focus.bindingRequestIDs.first {
                 newSessionHint(sessionID: sessionID, task: task)
@@ -86,13 +128,6 @@ struct SessionHubView: View {
         let fresh = focus.newSessionIDs
         if !fresh.isEmpty {
             newSessionsStrip(fresh)
-        }
-        if choice == 0, focus.currentTask == nil, focus.clearableSessionCount > 0 {
-            HStack {
-                Spacer(minLength: 0)
-                Button("Очистить список") { focus.clearSessionList() }
-                    .buttonStyle(FocusButtonStyle(kind: .quiet, height: 24, horizontalPadding: 0))
-            }
         }
     }
 
@@ -164,53 +199,12 @@ struct SessionHubView: View {
         }
     }
 
-    @ViewBuilder
-    private var hiddenSection: some View {
-        let hidden = focus.hiddenRows
-        if !hidden.isEmpty {
-            VStack(alignment: .leading, spacing: 6) {
-                Button {
-                    showsHidden.toggle()
-                } label: {
-                    HStack(spacing: 4) {
-                        Image(systemName: showsHidden ? "chevron.down" : "chevron.right")
-                            .font(.system(size: 10, weight: .semibold))
-                            .accessibilityHidden(true)
-                        Text(Self.hiddenCaption(hidden.count))
-                            .font(FocusStyle.secondaryFont)
-                    }
-                    .foregroundStyle(FocusStyle.secondaryText)
-                    .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                if showsHidden {
-                    ForEach(hidden) { row in
-                        HStack(spacing: 10) {
-                            Text(row.title)
-                                .font(.system(size: 13))
-                                .foregroundStyle(FocusStyle.secondaryText)
-                                .lineLimit(1)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                            Button("Вернуть") { focus.restoreHiddenSession(sessionID: row.id) }
-                                .buttonStyle(FocusButtonStyle(kind: .quiet, height: 24, horizontalPadding: 6))
-                        }
-                        .padding(.horizontal, 12)
-                    }
-                }
-            }
-        }
-    }
-
     nonisolated static func listChoiceTitle(_ count: Int) -> String {
         "Открыто сессий: \(count)"
     }
 
     nonisolated static func newSessionsCaption(_ count: Int) -> String {
         "Новые сессии · \(count)"
-    }
-
-    nonisolated static func hiddenCaption(_ count: Int) -> String {
-        "Скрытые · \(count)"
     }
 
     private func newSessionHint(sessionID: String, task: FocusTask) -> some View {
@@ -277,7 +271,7 @@ struct SessionHubView: View {
                     onDismiss: { focus.dismissAllDoneSuggestion(taskID: task.id) }
                 )
             } else if rows.isEmpty {
-                Text("Нет сессий — открой Claude Code и добавь сессию сюда")
+                Text(focus.settings.autoBindNewSessions ? "Нет сессий — открой Claude Code, сессия появится здесь сама" : "Нет сессий — открой Claude Code и добавь сессию сюда")
                     .font(.system(size: 13))
                     .foregroundStyle(FocusStyle.secondaryText)
                     .padding(.vertical, 4)
@@ -396,8 +390,15 @@ struct SessionHubView: View {
 
     private func focusActions(_ task: FocusTask, hasSessions: Bool) -> some View {
         HStack(spacing: 8) {
-            Button("+ Добавить сессию") { focus.openTaskSessions(taskID: task.id) }
-                .buttonStyle(FocusButtonStyle(kind: hasSessions ? .secondary : .primary, height: 28))
+            if !focus.settings.autoBindNewSessions {
+                Button("+ Добавить сессию") { focus.openTaskSessions(taskID: task.id) }
+                    .buttonStyle(FocusButtonStyle(kind: hasSessions ? .secondary : .primary, height: 28))
+            }
+            if focus.clearableTaskSessionCount(taskID: task.id) > 0 {
+                Button("Очистить") { focus.clearTaskSessions(taskID: task.id) }
+                    .buttonStyle(FocusButtonStyle(kind: .quiet, height: 28, horizontalPadding: 8))
+                    .help("Убрать сессии из задачи в «Скрытые». Сессии, которые ждут ответа, останутся")
+            }
             if !focus.waitingOutside.isEmpty {
                 Button(WaitingOutsideSection.buttonTitle(focus.waitingOutside.count, expanded: focus.waitingOutsideExpanded)) {
                     focus.toggleWaitingOutside()
@@ -408,7 +409,7 @@ struct SessionHubView: View {
             Button {
                 focus.closeTask(taskID: task.id, showPicker: true)
             } label: {
-                Label("Закрыть задачу", systemImage: "checkmark")
+                Label("Завершить", systemImage: "checkmark")
             }
             .buttonStyle(FocusButtonStyle(kind: .done, height: 28))
         }
@@ -493,7 +494,7 @@ struct SessionHubView: View {
         }
     }
 
-    private func rowView(_ row: HubRow, primaryID: String?, isHere: Bool = false, unbindable: Bool = false) -> some View {
+    private func rowView(_ row: HubRow, primaryID: String?, isHere: Bool = false, unbindable: Bool = false, flat: Bool = false) -> some View {
         HStack(spacing: 12) {
             if unbindable, SessionDoneFormat.showsDoneCheck(group: row.group) {
                 SessionDoneCheck(group: row.group) { focus.markSessionDone(sessionID: row.id) }
@@ -505,7 +506,7 @@ struct SessionHubView: View {
                         .font(.system(size: 13, weight: .semibold))
                         .foregroundStyle(FocusStyle.primaryText)
                         .lineLimit(1)
-                    if row.taskID != nil, let project = row.projectName {
+                    if row.taskID != nil || flat, let project = row.projectName {
                         ProjectTag(project)
                     }
                 }
@@ -518,7 +519,7 @@ struct SessionHubView: View {
             if row.group == .running, let progress = row.progress {
                 PlanProgressBar(progress: progress, width: 90)
             }
-            if unbindable, let status = SessionStatusKind.of(row.group) {
+            if unbindable || flat, let status = SessionStatusKind.of(row.group) {
                 SessionStatusBadge(kind: status)
             }
             buttons(row, primaryID: primaryID)
@@ -584,8 +585,6 @@ struct SessionHubView: View {
                     .foregroundStyle(FocusStyle.secondaryText)
                     .lineLimit(2)
             }
-            Button("Начать день") { focus.openDayStart() }
-                .buttonStyle(FocusButtonStyle(kind: .quiet, height: 28, horizontalPadding: 0))
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, 12)
