@@ -270,6 +270,34 @@ struct FocusCoordinatorPomodoroTests {
     }
 
     @Test
+    func newCycleKeepsTaskAndRestartsCounter() throws {
+        let h = try make()
+        let c = h.coordinator
+        c.settings.pomodoroCycle = 2
+        let a = try task(h, "A")
+        c.sessionsDidChange([session("s1", .completed, at: at(0))], now: at(0))
+        c.bind(sessionID: "s1", taskID: a, now: at(0))
+        c.startPomodoro(taskID: a, minutes: 5, now: at(0))
+        c.tick(now: at(300))
+        c.startBreak(nextStep: nil, minutes: 5, now: at(300))
+        c.tick(now: at(600))
+        c.resumeAfterBreak(minutes: 5, now: at(601))
+        #expect(c.pomodoro?.cycleIndex == 2)
+        c.tick(now: at(901))
+        guard case let .pomodoroEnd(endID) = c.card, let summary = c.pomodoroSummary(pomodoroID: endID) else {
+            Issue.record("expected pomodoroEnd, got \(String(describing: c.card))")
+            return
+        }
+        #expect(PomodoroEndCard.isCycleEnd(cycleIndex: summary.cycleIndex, cycle: summary.cycle))
+        c.startBreak(nextStep: nil, minutes: 5, now: at(902))
+        c.tick(now: at(1202))
+        c.resumeAfterBreak(minutes: 5, now: at(1203))
+        #expect(c.pomodoro?.taskID == a)
+        #expect(c.pomodoro?.cycleIndex == 1)
+        #expect(c.focusTaskSessions.map(\.id) == ["s1"])
+    }
+
+    @Test
     func breakEndActions() throws {
         let h = try make()
         let c = h.coordinator

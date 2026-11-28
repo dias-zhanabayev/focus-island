@@ -32,6 +32,10 @@ struct PomodoroEndCard: View {
         Self.breakMinutes(focus.breakMinutesChoice ?? focus.settings.pomodoroBreakMinutes)
     }
 
+    private var isCycleEnd: Bool {
+        Self.isCycleEnd(cycleIndex: summary?.cycleIndex ?? 1, cycle: summary?.cycle ?? focus.settings.pomodoroCycle)
+    }
+
     private var nextFocusMinutes: Int {
         summary?.nextFocusMinutes ?? focus.nextFocusMinutes(after: nil)
     }
@@ -41,7 +45,7 @@ struct PomodoroEndCard: View {
             HStack(spacing: 14) {
                 countdownRing(remaining: remaining)
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(Self.breakHeadline(minutes: breakMinutes, secondsLeft: remaining))
+                    Text(Self.breakHeadline(minutes: breakMinutes, secondsLeft: remaining, newCycle: isCycleEnd))
                         .font(.system(size: 15, weight: .bold))
                         .monospacedDigit()
                         .foregroundStyle(FocusStyle.primaryText)
@@ -59,7 +63,7 @@ struct PomodoroEndCard: View {
                     Button("Отменить") { focus.cancelBreakCountdown() }
                         .buttonStyle(FocusButtonStyle(kind: .quiet, height: 32, horizontalPadding: 6))
                 } else {
-                    Button(Self.breakTitle(minutes: breakMinutes)) { focus.startBreak(nextStep: nextStep, minutes: breakMinutes) }
+                    Button(isCycleEnd ? Self.newCycleTitle(minutes: breakMinutes) : Self.breakTitle(minutes: breakMinutes)) { focus.startBreak(nextStep: nextStep, minutes: breakMinutes) }
                         .buttonStyle(FocusButtonStyle(kind: .rest, height: 32))
                         .keyboardShortcut(.defaultAction)
                 }
@@ -71,7 +75,7 @@ struct PomodoroEndCard: View {
                 MinutesSegments(choices: PomodoroFormat.breakChoices, selected: breakMinutes) {
                     focus.chooseBreakMinutes($0)
                 }
-                Text(Self.afterBreakCaption(focusMinutes: nextFocusMinutes))
+                Text(Self.afterBreakCaption(focusMinutes: nextFocusMinutes, newCycle: isCycleEnd, cycle: summary?.cycle ?? focus.settings.pomodoroCycle))
                     .font(FocusStyle.secondaryFont)
                     .foregroundStyle(FocusStyle.secondaryText)
                     .lineLimit(1)
@@ -122,7 +126,7 @@ struct PomodoroEndCard: View {
             .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 1) {
                 FocusSectionCaption(
-                    Self.headline(cycleIndex: summary?.cycleIndex ?? 1, cycle: summary?.cycle ?? focus.settings.pomodoroCycle),
+                    Self.headline(cycleIndex: summary?.cycleIndex ?? 1, cycle: summary?.cycle ?? focus.settings.pomodoroCycle, newCycle: isCycleEnd),
                     color: FocusStyle.working
                 )
                 Text(Self.title(minutes: summary?.plannedMinutes ?? focus.settings.pomodoroFocusMinutes, taskTitle: summary?.taskTitle ?? ""))
@@ -203,10 +207,12 @@ struct PomodoroEndCard: View {
             Button("Закончить на сегодня") { focus.endForToday(nextStep: nextStep) }
                 .buttonStyle(FocusButtonStyle(kind: .quiet, horizontalPadding: 6))
             Spacer(minLength: 0)
-            Button(Self.continueTitle(minutes: nextFocusMinutes)) {
-                focus.continueFocus(nextStep: nextStep, minutes: nextFocusMinutes)
+            if !isCycleEnd {
+                Button(Self.continueTitle(minutes: nextFocusMinutes)) {
+                    focus.continueFocus(nextStep: nextStep, minutes: nextFocusMinutes)
+                }
+                .buttonStyle(FocusButtonStyle(kind: .secondary))
             }
-            .buttonStyle(FocusButtonStyle(kind: .secondary))
         }
         .padding(.top, 14)
         .overlay(alignment: .top) {
@@ -235,8 +241,16 @@ struct PomodoroEndCard: View {
         return trimmed
     }
 
-    nonisolated static func headline(cycleIndex: Int, cycle: Int) -> String {
-        "Фокус \(cycleIndex) из \(cycle) готов"
+    nonisolated static func isCycleEnd(cycleIndex: Int, cycle: Int) -> Bool {
+        cycle > 0 && cycleIndex >= cycle
+    }
+
+    nonisolated static func headline(cycleIndex: Int, cycle: Int, newCycle: Bool = false) -> String {
+        newCycle ? "Цикл готов · \(cycleIndex) из \(cycle)" : "Фокус \(cycleIndex) из \(cycle) готов"
+    }
+
+    nonisolated static func newCycleTitle(minutes: Int) -> String {
+        "↻ Новый цикл · перерыв \(minutes) мин"
     }
 
     nonisolated static func title(minutes: Int, taskTitle: String) -> String {
@@ -273,13 +287,14 @@ struct PomodoroEndCard: View {
         "☕ Начать перерыв · \(minutes) мин"
     }
 
-    nonisolated static func breakHeadline(minutes: Int, secondsLeft: Int?) -> String {
-        guard let secondsLeft else { return "Перерыв \(minutes) мин" }
-        return "Перерыв \(minutes) мин начнётся через \(secondsLeft) с"
+    nonisolated static func breakHeadline(minutes: Int, secondsLeft: Int?, newCycle: Bool = false) -> String {
+        let prefix = newCycle ? "Новый цикл: перерыв" : "Перерыв"
+        guard let secondsLeft else { return "\(prefix) \(minutes) мин" }
+        return "\(prefix) \(minutes) мин начнётся через \(secondsLeft) с"
     }
 
-    nonisolated static func afterBreakCaption(focusMinutes: Int) -> String {
-        "потом фокус \(focusMinutes) мин"
+    nonisolated static func afterBreakCaption(focusMinutes: Int, newCycle: Bool = false, cycle: Int = 4) -> String {
+        newCycle ? "потом фокус 1 из \(cycle) · \(focusMinutes) мин" : "потом фокус \(focusMinutes) мин"
     }
 
     nonisolated static func countdownProgress(secondsLeft: Int) -> CGFloat {
