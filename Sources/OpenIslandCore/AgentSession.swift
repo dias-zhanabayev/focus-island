@@ -303,6 +303,8 @@ public struct AgentSession: Equatable, Identifiable, Codable, Sendable {
     /// is considered gone. This prevents flicker from momentary `ps` gaps.
     public var processNotSeenCount: Int = 0
 
+    public var isQuietlySettled: Bool = false
+
     public init(
         id: String,
         title: String,

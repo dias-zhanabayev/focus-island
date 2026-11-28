@@ -233,6 +233,13 @@ final class ProcessMonitoringCoordinator {
             aliveSessionIDs: aliveIDs
         )
 
+        let now = Date()
+        _ = local.settleQuietly(
+            sessionIDs: ClaudeTurnEndProbe.sessionsToSettle(local.sessions, now: now) { path in
+                ClaudeTurnEndProbe.quietlyEnded(transcriptPath: path, now: now)
+            }
+        )
+
         // Resolve jump targets via the new focused resolver.
         // When pre-resolved targets are provided (computed off-main-actor),
         // use them directly to avoid blocking the main thread with AppleScript calls.

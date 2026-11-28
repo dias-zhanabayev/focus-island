@@ -90,6 +90,7 @@ public struct SessionState: Equatable, Sendable {
                 && session.questionPrompt != nil
             let preservesActionableState = keepsPendingApproval || keepsPendingQuestion
 
+            session.isQuietlySettled = false
             if !preservesActionableState {
                 session.phase = payload.phase
                 session.summary = payload.summary
@@ -331,6 +332,18 @@ public struct SessionState: Equatable, Sendable {
             }
         }
 
+        return changed
+    }
+
+    public mutating func settleQuietly(sessionIDs: Set<String>) -> Bool {
+        var changed = false
+        for id in sessionIDs {
+            guard var session = sessionsByID[id], session.phase == .running else { continue }
+            session.phase = .completed
+            session.isQuietlySettled = true
+            upsert(session)
+            changed = true
+        }
         return changed
     }
 

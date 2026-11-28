@@ -46,6 +46,7 @@ public final class BridgeServer: @unchecked Sendable {
     }
 
     private let socketURL: URL
+    private let hookEventLog: HookEventLog
     private let queue = DispatchQueue(label: "app.openisland.bridge.server")
     private let queueKey = DispatchSpecificKey<Void>()
 
@@ -71,6 +72,7 @@ public final class BridgeServer: @unchecked Sendable {
         socketURL: URL = BridgeSocketLocation.defaultURL
     ) {
         self.socketURL = socketURL
+        self.hookEventLog = HookEventLog(directory: socketURL.deletingLastPathComponent())
         queue.setSpecific(key: queueKey, value: ())
     }
 
@@ -361,6 +363,9 @@ public final class BridgeServer: @unchecked Sendable {
     }
 
     private func handleClaudeHook(_ payload: ClaudeHookPayload, from clientID: UUID) {
+        hookEventLog.append(
+            HookEventLog.line(for: payload, phaseBefore: localState.session(id: payload.sessionID)?.phase, at: .now)
+        )
         // Subagent processes fire their own hooks with agentID set.
         // The parent session already receives SubagentStart/SubagentStop events,
         // so we suppress subagent hooks to avoid creating duplicate sessions.
@@ -695,6 +700,12 @@ public final class BridgeServer: @unchecked Sendable {
                     ),
                     toSession: payload.sessionID
                 )
+            }
+
+            let parentIsIdle = localState.session(id: payload.sessionID)?.phase == .completed
+            if parentIsIdle {
+                send(.response(.acknowledged), to: clientID)
+                return
             }
 
             let summary = payload.agentType.map { "Started \($0) subagent." } ?? "Started \(payload.resolvedAgentTool.displayName) subagent."

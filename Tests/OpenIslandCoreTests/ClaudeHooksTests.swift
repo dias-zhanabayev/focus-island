@@ -667,6 +667,75 @@ struct ClaudeHooksTests {
     }
 
     @Test
+    func backgroundSubagentAfterStopDoesNotReopenCompletedSession() async throws {
+        let socketURL = BridgeSocketLocation.uniqueTestURL()
+        let server = BridgeServer(socketURL: socketURL)
+        try server.start()
+        defer { server.stop() }
+
+        let observer = LocalBridgeClient(socketURL: socketURL)
+        let stream = try observer.connect()
+        defer { observer.disconnect() }
+
+        let collector = AgentEventCollector()
+        let collectionTask = Task {
+            do {
+                for try await event in stream {
+                    await collector.append(event)
+                }
+            } catch {}
+        }
+        defer { collectionTask.cancel() }
+
+        try await observer.send(.registerClient(role: .observer))
+
+        let sessionID = "claude-background-subagent-after-stop"
+        let transcript = "/tmp/claude-background-subagent-after-stop.jsonl"
+        for payload in [
+            ClaudeHookPayload(cwd: "/tmp/worktree", hookEventName: .userPromptSubmit, sessionID: sessionID, transcriptPath: transcript, prompt: "Reply with exactly OK."),
+            ClaudeHookPayload(cwd: "/tmp/worktree", hookEventName: .stop, sessionID: sessionID, transcriptPath: transcript, lastAssistantMessage: "OK"),
+            ClaudeHookPayload(cwd: "/tmp/worktree", hookEventName: .subagentStart, sessionID: sessionID, transcriptPath: transcript, agentID: "background-agent", agentType: ""),
+            ClaudeHookPayload(cwd: "/tmp/worktree", hookEventName: .subagentStop, sessionID: sessionID, transcriptPath: transcript, agentID: "background-agent", agentType: "", lastAssistantMessage: "(silence)"),
+        ] {
+            _ = try BridgeCommandClient(socketURL: socketURL).send(.processClaudeHook(payload))
+        }
+
+        _ = await waitForCompletedSessionEvent(sessionID: sessionID, collector: collector)
+        try? await Task.sleep(for: .milliseconds(200))
+        let events = await collector.snapshot()
+        var state = SessionState()
+        for event in events {
+            state.apply(event)
+        }
+
+        let session = try #require(state.session(id: sessionID))
+        #expect(session.phase == .completed)
+    }
+
+    @Test
+    func hookEventLogWritesOneLinePerHook() throws {
+        let socketURL = BridgeSocketLocation.uniqueTestURL()
+        let server = BridgeServer(socketURL: socketURL)
+        try server.start()
+        defer { server.stop() }
+
+        let sessionID = "claude-hook-log-\(UUID().uuidString)"
+        _ = try BridgeCommandClient(socketURL: socketURL).send(
+            .processClaudeHook(
+                ClaudeHookPayload(cwd: "/tmp/worktree", hookEventName: .userPromptSubmit, sessionID: sessionID, prompt: "hello\nworld")
+            )
+        )
+
+        let logURL = socketURL.deletingLastPathComponent().appendingPathComponent(HookEventLog.fileName)
+        let contents = try String(contentsOf: logURL, encoding: .utf8)
+        let lines = contents.split(separator: "\n").filter { $0.contains("session=\(sessionID)") }
+        #expect(lines.count == 1)
+        #expect(lines.first?.contains("UserPromptSubmit") == true)
+        #expect(lines.first?.contains("before=none") == true)
+        #expect(lines.first?.contains("prompt=«hello world»") == true)
+    }
+
+    @Test
     func claudeSubagentStopAfterStopDoesNotReopenCompletedSession() async throws {
         let socketURL = BridgeSocketLocation.uniqueTestURL()
         let server = BridgeServer(socketURL: socketURL)
