@@ -12,6 +12,24 @@ struct ClaudeRemoteControlLocator: Sendable {
         let sessionId: String?
         let bridgeSessionId: String?
         let updatedAt: Double?
+        let name: String?
+    }
+
+    func names(forCLISessionIDs ids: Set<String>) -> [String: String] {
+        guard !ids.isEmpty else { return [:] }
+        let files = (try? FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil)) ?? []
+        var best: [String: (name: String, updatedAt: Double)] = [:]
+        for file in files where file.pathExtension == "json" {
+            guard let data = try? Data(contentsOf: file),
+                  let record = try? JSONDecoder().decode(Record.self, from: data),
+                  let id = record.sessionId, ids.contains(id),
+                  record.bridgeSessionId != nil,
+                  let name = record.name?.trimmingCharacters(in: .whitespacesAndNewlines), !name.isEmpty else { continue }
+            let updatedAt = record.updatedAt ?? 0
+            if let current = best[id], current.updatedAt >= updatedAt { continue }
+            best[id] = (name, updatedAt)
+        }
+        return best.mapValues(\.name)
     }
 
     func bridgeSessionID(forCLISessionID cliSessionID: String) -> String? {

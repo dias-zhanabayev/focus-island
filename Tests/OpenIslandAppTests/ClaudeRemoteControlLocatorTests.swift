@@ -39,4 +39,16 @@ struct ClaudeRemoteControlLocatorTests {
         #expect(ClaudeRemoteControlLocator.openURL(bridgeSessionID: "session_A1") { _ in true }?.absoluteString == "claude://claude.ai/code/session_A1")
         #expect(ClaudeRemoteControlLocator.openURL(bridgeSessionID: "session_A1") { _ in false }?.absoluteString == "https://claude.ai/code/session_A1")
     }
+
+    @Test
+    func namesComeFromRemoteControlRecords() throws {
+        let dir = try directory([
+            "1.json": ["sessionId": "agent", "bridgeSessionId": "session_A", "name": "agent-product-engineer", "updatedAt": 5],
+            "2.json": ["sessionId": "plain", "name": "no-bridge"],
+            "3.json": ["sessionId": "blank", "bridgeSessionId": "session_B", "name": "  "],
+        ])
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let names = ClaudeRemoteControlLocator(directory: dir).names(forCLISessionIDs: ["agent", "plain", "blank", "missing"])
+        #expect(names == ["agent": "agent-product-engineer"])
+    }
 }

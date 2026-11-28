@@ -727,7 +727,7 @@ struct ClaudeHooksTests {
         )
 
         let logURL = socketURL.deletingLastPathComponent().appendingPathComponent(HookEventLog.fileName)
-        let contents = try String(contentsOf: logURL, encoding: .utf8)
+        let contents = String(decoding: try Data(contentsOf: logURL), as: UTF8.self)
         let lines = contents.split(separator: "\n").filter { $0.contains("session=\(sessionID)") }
         #expect(lines.count == 1)
         #expect(lines.first?.contains("UserPromptSubmit") == true)

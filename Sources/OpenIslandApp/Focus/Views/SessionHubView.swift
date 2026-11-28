@@ -506,7 +506,7 @@ struct SessionHubView: View {
             }
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 8) {
-                    Text(unbindable ? (focus.sessionLabel(row.id) ?? row.title) : row.title)
+                    Text(unbindable || flat ? (focus.sessionLabel(row.id) ?? row.title) : row.title)
                         .font(.system(size: 13, weight: .semibold))
                         .foregroundStyle(FocusStyle.primaryText)
                         .lineLimit(1)

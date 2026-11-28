@@ -2568,7 +2568,7 @@ final class FocusCoordinator {
         deferredReturnedSessionIDs.formIntersection(kept)
         if let fresh = pendingReturnedSessionIDs.first(where: { !deferredReturnedSessionIDs.contains($0) }) {
             if let card, !cardIsDeferredReturned, card.priority >= FocusCard.returned(sessionID: fresh).priority { return }
-            present(.returned(sessionID: fresh), now: now)
+            present(.returned(sessionID: fresh), now: now, showsOverlay: false)
             return
         }
         guard card == nil, let deferred = pendingReturnedSessionIDs.first else { return }

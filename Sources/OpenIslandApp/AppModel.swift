@@ -560,9 +560,14 @@ final class AppModel {
         }
         focus.lookupSessionLabels = { ids in
             await Task.detached(priority: .utility) {
-                ClaudeDesktopSessionLocator().sessions(forCLISessionIDs: ids).mapValues {
+                var labels = ClaudeDesktopSessionLocator().sessions(forCLISessionIDs: ids).mapValues {
                     SessionLabel(title: $0.title, status: $0.turnSummary?.text, priorSessionIDs: $0.priorCLISessionIDs)
                 }
+                let missing = ids.subtracting(labels.keys)
+                for (id, name) in ClaudeRemoteControlLocator().names(forCLISessionIDs: missing) {
+                    labels[id] = SessionLabel(title: name, status: nil, priorSessionIDs: [])
+                }
+                return labels
             }.value
         }
         focus.isSessionOnScreen = { [weak self] sessionID in

@@ -188,7 +188,7 @@ struct FocusCoordinatorCardTests {
         c.presentCard = { presented += 1 }
         c.sessionsDidChange([session("s1", .completed, at: t0.addingTimeInterval(30))], now: t0.addingTimeInterval(30))
         #expect(c.card == .returned(sessionID: "s1"))
-        #expect(presented == 1)
+        #expect(presented == 0)
     }
 
     @Test
@@ -545,10 +545,10 @@ struct FocusCoordinatorCardTests {
         c.presentCard = { presented += 1 }
         c.sessionsDidChange([session("s1", .completed, at: t0.addingTimeInterval(5)), session("s2", .completed, at: t0.addingTimeInterval(5)), running[2], session("s4", .completed, at: t0.addingTimeInterval(30))], now: t0.addingTimeInterval(30))
         #expect(c.card == .returned(sessionID: "s4"))
-        #expect(presented == 1)
+        #expect(presented == 0)
         c.perform(.dismiss, now: t0.addingTimeInterval(31))
         #expect(c.card == .returned(sessionID: "s2"))
-        #expect(presented == 1)
+        #expect(presented == 0)
     }
 
     @Test
